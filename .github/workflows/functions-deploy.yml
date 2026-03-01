@@ -65,16 +65,16 @@ jobs:
           name: process-trivy-reports
           runtime: python311
           region: ${{ env.REGION }}
-          source_url: gs://${{ env.PROJECT_ID }}-scan-results/functions/process-trivy.zip
+          source_dir: functions/process_trivy        # ← was source_url (deploy from local dir)
           entry_point: process_report
           event_trigger_type: google.cloud.pubsub.topic.v1.messagePublished
-          event_trigger_uri: projects/${{ env.PROJECT_ID }}/topics/trivy-reports
+          event_trigger_pubsub_topic: projects/${{ env.PROJECT_ID }}/topics/trivy-reports  # ← was event_trigger_uri
           service_account: cloud-functions-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com
           environment_variables: |-
             PROJECT_ID=${{ env.PROJECT_ID }}
             DATASET_ID=security_data
           memory: 256M
-          timeout: 60
+          service_timeout: 60                        # ← was timeout
           max_instance_count: 3
           min_instance_count: 0
 
@@ -84,16 +84,16 @@ jobs:
           name: detect-apt-indicators
           runtime: python311
           region: ${{ env.REGION }}
-          source_url: gs://${{ env.PROJECT_ID }}-scan-results/functions/detect-apt.zip
+          source_dir: functions/detect_apt           # ← was source_url
           entry_point: detect_apt
           event_trigger_type: google.cloud.pubsub.topic.v1.messagePublished
-          event_trigger_uri: projects/${{ env.PROJECT_ID }}/topics/apt-detection
+          event_trigger_pubsub_topic: projects/${{ env.PROJECT_ID }}/topics/apt-detection  # ← was event_trigger_uri
           service_account: cloud-functions-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com
           environment_variables: |-
             PROJECT_ID=${{ env.PROJECT_ID }}
             DATASET_ID=security_data
             ALERT_TOPIC=security-alerts
           memory: 256M
-          timeout: 60
+          service_timeout: 60                        # ← was timeout
           max_instance_count: 3
           min_instance_count: 0
