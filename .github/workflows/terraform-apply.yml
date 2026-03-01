@@ -13,6 +13,9 @@ permissions:
 jobs:
   terraform-apply:
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
 
     steps:
       - name: Checkout
@@ -29,8 +32,12 @@ jobs:
 
       - name: Terraform Init
         working-directory: ./terraform
+        env:
+          TF_LOG: INFO
         run: terraform init
 
       - name: Terraform Apply
         working-directory: ./terraform
+        env:
+          TF_LOG: INFO
         run: terraform apply -auto-approve
