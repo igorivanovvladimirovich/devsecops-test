@@ -12,16 +12,88 @@ permissions:
   id-token: write
   contents: read
 
+env:
+  REGION: us-central1
+  PROJECT_ID: ${{ secrets.PROJECT_ID }}
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
-      
-      - uses: google-github-actions/auth@v1
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
           service_account: ${{ secrets.GCP_SA_EMAIL }}
-      
-      - name: Deploy Functions
-        run: bash scripts/setup/05-deploy-functions.sh
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      # ── Package functions ───────────────────────────────────────────
+
+      - name: Package process-trivy function
+        working-directory: functions/process_trivy
+        run: zip -r ../process-trivy.zip . -x "*.pyc" -x "__pycache__/*"
+
+      - name: Package detect-apt function
+        working-directory: functions/detect_apt
+        run: zip -r ../detect-apt.zip . -x "*.pyc" -x "__pycache__/*"
+
+      # ── Upload packages to GCS ──────────────────────────────────────
+
+      - name: Upload process-trivy package to GCS
+        uses: google-github-actions/upload-cloud-storage@v2
+        with:
+          path: functions/process-trivy.zip
+          destination: ${{ env.PROJECT_ID }}-scan-results/functions
+
+      - name: Upload detect-apt package to GCS
+        uses: google-github-actions/upload-cloud-storage@v2
+        with:
+          path: functions/detect-apt.zip
+          destination: ${{ env.PROJECT_ID }}-scan-results/functions
+
+      # ── Deploy Cloud Functions ──────────────────────────────────────
+
+      - name: Deploy process-trivy-reports
+        uses: google-github-actions/deploy-cloud-functions@v3
+        with:
+          name: process-trivy-reports
+          runtime: python311
+          region: ${{ env.REGION }}
+          source_url: gs://${{ env.PROJECT_ID }}-scan-results/functions/process-trivy.zip
+          entry_point: process_report
+          event_trigger_type: google.cloud.pubsub.topic.v1.messagePublished
+          event_trigger_uri: projects/${{ env.PROJECT_ID }}/topics/trivy-reports
+          service_account: cloud-functions-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com
+          environment_variables: |-
+            PROJECT_ID=${{ env.PROJECT_ID }}
+            DATASET_ID=security_data
+          memory: 256M
+          timeout: 60
+          max_instance_count: 3
+          min_instance_count: 0
+
+      - name: Deploy detect-apt-indicators
+        uses: google-github-actions/deploy-cloud-functions@v3
+        with:
+          name: detect-apt-indicators
+          runtime: python311
+          region: ${{ env.REGION }}
+          source_url: gs://${{ env.PROJECT_ID }}-scan-results/functions/detect-apt.zip
+          entry_point: detect_apt
+          event_trigger_type: google.cloud.pubsub.topic.v1.messagePublished
+          event_trigger_uri: projects/${{ env.PROJECT_ID }}/topics/apt-detection
+          service_account: cloud-functions-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com
+          environment_variables: |-
+            PROJECT_ID=${{ env.PROJECT_ID }}
+            DATASET_ID=security_data
+            ALERT_TOPIC=security-alerts
+          memory: 256M
+          timeout: 60
+          max_instance_count: 3
+          min_instance_count: 0

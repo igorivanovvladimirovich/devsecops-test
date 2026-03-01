@@ -6,46 +6,55 @@ on:
   pull_request:
     branches: [ main ]
   schedule:
-    - cron: '0 0 * * *'  # Daily
+    - cron: '0 0 * * *'
 
 jobs:
   trivy-scan:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
-      - name: Run Trivy vulnerability scanner in repo mode
-        uses: aquasecurity/trivy-action@0.30.0
-        with:
-          scan-type: 'fs'
-          scan-ref: '.'
-          format: 'sarif'
-          output: 'trivy-results.sarif'
-          severity: 'CRITICAL,HIGH'
+
+      - name: Install Trivy
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
+            | sh -s -- -b /usr/local/bin
+          trivy --version
+
+      - name: Run filesystem scan
+        run: |
+          trivy fs . \
+            --severity CRITICAL,HIGH \
+            --format sarif \
+            --output trivy-results.sarif \
+            --exit-code 0
 
       - name: Upload Trivy results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: 'trivy-results.sarif'
-  
+
   dockerfile-scan:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+
+      - name: Install Trivy
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
+            | sh -s -- -b /usr/local/bin
+
       - name: Scan Dockerfile
-        uses: aquasecurity/trivy-action@0.30.0
-        with:
-          scan-type: 'config'
-          scan-ref: 'cloud-run/security-dashboard/Dockerfile'
-          format: 'table'
-          severity: 'CRITICAL,HIGH'
-  
+        run: |
+          trivy config cloud-run/security-dashboard/Dockerfile \
+            --severity CRITICAL,HIGH \
+            --format table \
+            --exit-code 0
+
   secret-scan:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Gitleaks scan
         uses: gitleaks/gitleaks-action@v2
         env:

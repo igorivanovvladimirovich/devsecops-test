@@ -20,7 +20,7 @@ cd ..
 cd detect_apt
 zip -r ../detect-apt.zip . -x "*.pyc" -x "__pycache__/*"
 cd ..
-
+PROJECT_ID=$(gcloud config get-value project)
 # Upload to Cloud Storage
 SCAN_RESULTS_BUCKET="${PROJECT_ID}-scan-results"
 
