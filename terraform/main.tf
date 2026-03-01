@@ -24,6 +24,7 @@ module "iam" {
   project_id   = var.project_id
   github_owner = var.github_owner
   github_repo  = var.github_repo
+  depends_on   = [module.apis]
 }
 
 module "storage" {
@@ -43,9 +44,14 @@ module "gke" {
   services_range_name  = module.network.services_range_name
 }
 
+module "apis" {
+  source     = "./modules/apis"
+  project_id = var.project_id
+}
+
 module "bigquery" {
   source                    = "./modules/bigquery"
-  #cloud_functions_sa_email  = module.iam.cloud_functions_sa_email
+  depends_on = [module.apis]
 }
 
 module "pubsub" {
