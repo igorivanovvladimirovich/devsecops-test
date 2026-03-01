@@ -41,7 +41,7 @@ jobs:
             --timeout=30s
 
       - name: Deploy vulnerable apps
-        run: kubectl apply -f k8s/vulnerable-apps/
+        run: kubectl apply -f k8s/vulnerable-apps/ --force   # ← add --force
 
       - name: Deploy apt simulation
-        run: kubectl apply -f k8s/apt-simulation/
+        run: kubectl apply -f k8s/apt-simulation/ --force    # ← add --force
