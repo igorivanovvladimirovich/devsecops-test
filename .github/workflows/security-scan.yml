@@ -31,7 +31,7 @@ jobs:
   dockerfile-scan:
     runs-on: ubuntu-latest
     steps:
-      - uses:actions/checkout@v4
+      - uses: actions/checkout@v4
       
       - name: Scan Dockerfile
         uses: aquasecurity/trivy-action@0.30.0

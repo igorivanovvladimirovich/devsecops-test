@@ -4,7 +4,7 @@ set -e
 
 echo "=== Deploying Cloud Functions ==="
 
-source .env
+# source .env
 
 cd functions
 
