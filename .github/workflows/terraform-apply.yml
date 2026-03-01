@@ -14,7 +14,10 @@ jobs:
   terraform-apply:
     runs-on: ubuntu-latest
     environment: production
-    
+    permissions:
+      id-token: write
+      contents: read
+
     steps:
       - name: Checkout
         uses: actions/checkout@v3
