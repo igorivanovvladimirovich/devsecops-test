@@ -45,27 +45,28 @@ module "gke" {
 
 module "bigquery" {
   source                    = "./modules/bigquery"
-  cloud_functions_sa_email  = module.iam.cloud_functions_sa_email
+  #cloud_functions_sa_email  = module.iam.cloud_functions_sa_email
 }
 
 module "pubsub" {
   source = "./modules/pubsub"
 }
 
-module "functions" {
-  source                    = "./modules/functions"
-  project_id                = var.project_id
-  region                    = var.region
-  scan_results_bucket       = module.storage.scan_results_bucket
-  cloud_functions_sa_email  = module.iam.cloud_functions_sa_email
-  trivy_reports_topic       = module.pubsub.trivy_reports_topic
-  apt_detection_topic       = module.pubsub.apt_detection_topic
-  security_alerts_topic     = module.pubsub.security_alerts_topic
-}
+# Закомментировано - деплоим позже через скрипты
+# module "functions" {
+#   source                    = "./modules/functions"
+#   project_id                = var.project_id
+#   region                    = var.region
+#   scan_results_bucket       = module.storage.scan_results_bucket
+#   cloud_functions_sa_email  = module.iam.cloud_functions_sa_email
+#   trivy_reports_topic       = module.pubsub.trivy_reports_topic
+#   apt_detection_topic       = module.pubsub.apt_detection_topic
+#   security_alerts_topic     = module.pubsub.security_alerts_topic
+# }
 
-module "cloudrun" {
-  source             = "./modules/cloudrun"
-  project_id         = var.project_id
-  region             = var.region
-  container_registry = module.storage.container_registry
-}
+# module "cloudrun" {
+#   source             = "./modules/cloudrun"
+#   project_id         = var.project_id
+#   region             = var.region
+#   container_registry = module.storage.container_registry
+# }

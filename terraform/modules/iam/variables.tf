@@ -1,3 +1,3 @@
-variable "project_id" {}
-variable "github_owner" {}
-variable "github_repo" {}
+variable "project_id"   { type = string }
+variable "github_owner" { type = string }
+variable "github_repo"  { type = string }

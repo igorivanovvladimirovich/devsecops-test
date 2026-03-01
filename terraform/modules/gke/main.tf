@@ -26,7 +26,7 @@ resource "google_container_cluster" "autopilot" {
 
   monitoring_config {
     enable_components = ["SYSTEM_COMPONENTS"]
-    managed_prometheus { enabled = false }
+    # Prometheus enabled by default in Autopilot 1.25+
   }
 
   release_channel {

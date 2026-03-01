@@ -7,7 +7,10 @@ echo "=== Terraform Initialization ==="
 source .env
 
 cd terraform
-
+PROJECT_ID=$(gcloud config get-value project)
+BUCKET="${PROJECT_ID}-tfstate"
+USER=$(gcloud config get-value account)
+gsutil iam ch user:${USER}:objectAdmin gs://${BUCKET}
 # Create terraform.tfvars
 cat > terraform.tfvars <<EOF
 project_id    = "${PROJECT_ID}"
