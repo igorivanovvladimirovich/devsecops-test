@@ -5,7 +5,7 @@ on:
     branches: [ main ]
     paths:
       - 'terraform/**'
-
+  workflow_dispatch:
 permissions:
   id-token: write
   contents: read
@@ -40,4 +40,12 @@ jobs:
         working-directory: ./terraform
         env:
           TF_LOG: INFO
-        run: terraform apply -auto-approve -lock-timeout=5m
+          TF_LOG_PATH: terraform.log    # ← write logs to file
+        run: |
+          terraform apply -auto-approve \
+            -lock-timeout=30m \
+            -refresh=false              # ← skip refresh if infra hasn't changed
+
+      - name: Show Terraform logs on failure
+        if: failure()
+        run: tail -100 terraform/terraform.log
