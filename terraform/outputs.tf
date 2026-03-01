@@ -1,121 +1,42 @@
-# GKE Outputs
-output "cluster_name" {
-  description = "GKE cluster name"
-  value       = google_container_cluster.autopilot.name
+output "cluster_name" { value = module.gke.cluster_name }
+output "cluster_endpoint" { value = module.gke.cluster_endpoint, sensitive = true }
+output "region" { value = var.region }
+
+output "bigquery_dataset_id" { value = module.bigquery.dataset_id }
+output "vulnerabilities_table_id" { 
+  value = "${var.project_id}.${module.bigquery.dataset_id}.${module.bigquery.vulnerabilities_table_id}" 
+}
+output "apt_indicators_table_id" { 
+  value = "${var.project_id}.${module.bigquery.dataset_id}.${module.bigquery.apt_indicators_table_id}" 
 }
 
-output "cluster_endpoint" {
-  description = "GKE cluster endpoint"
-  value       = google_container_cluster.autopilot.endpoint
-  sensitive   = true
-}
+output "trivy_reports_topic" { value = module.pubsub.trivy_reports_topic }
+output "apt_detection_topic" { value = module.pubsub.apt_detection_topic }
+output "security_alerts_topic" { value = module.pubsub.security_alerts_topic }
 
-output "cluster_ca_certificate" {
-  description = "GKE cluster CA certificate"
-  value       = google_container_cluster.autopilot.master_auth[0].cluster_ca_certificate
-  sensitive   = true
-}
+output "terraform_state_bucket" { value = module.storage.terraform_state_bucket }
+output "scan_results_bucket" { value = module.storage.scan_results_bucket }
+output "demo_target_bucket" { value = module.storage.demo_target_bucket }
 
-output "region" {
-  description = "GCP region"
-  value       = var.region
-}
+output "dashboard_url" { value = module.cloudrun.dashboard_url }
 
-# BigQuery Outputs
-output "bigquery_dataset_id" {
-  description = "BigQuery dataset ID"
-  value       = google_bigquery_dataset.security.dataset_id
-}
+output "workload_identity_provider" { value = module.iam.workload_identity_provider }
+output "github_actions_sa_email" { value = module.iam.github_actions_sa_email }
+output "trivy_operator_sa_email" { value = module.iam.trivy_operator_sa_email }
+output "cloud_functions_sa_email" { value = module.iam.cloud_functions_sa_email }
 
-output "vulnerabilities_table_id" {
-  description = "Vulnerabilities table full ID"
-  value       = "${var.project_id}.${google_bigquery_dataset.security.dataset_id}.${google_bigquery_table.vulnerabilities.table_id}"
-}
+output "container_registry" { value = module.storage.container_registry }
 
-output "apt_indicators_table_id" {
-  description = "APT indicators table full ID"
-  value       = "${var.project_id}.${google_bigquery_dataset.security.dataset_id}.${google_bigquery_table.apt_indicators.table_id}"
-}
-
-# Pub/Sub Outputs
-output "trivy_reports_topic" {
-  description = "Trivy reports Pub/Sub topic"
-  value       = google_pubsub_topic.trivy_reports.name
-}
-
-output "apt_detection_topic" {
-  description = "APT detection Pub/Sub topic"
-  value       = google_pubsub_topic.apt_detection.name
-}
-
-output "security_alerts_topic" {
-  description = "Security alerts Pub/Sub topic"
-  value       = google_pubsub_topic.security_alerts.name
-}
-
-# Storage Outputs
-output "terraform_state_bucket" {
-  description = "Terraform state bucket"
-  value       = google_storage_bucket.terraform_state.name
-}
-
-output "scan_results_bucket" {
-  description = "Scan results bucket"
-  value       = google_storage_bucket.scan_results.name
-}
-
-output "demo_target_bucket" {
-  description = "Demo target bucket (for exploit)"
-  value       = google_storage_bucket.demo_target.name
-}
-
-# Cloud Run Outputs
-output "dashboard_url" {
-  description = "Security Dashboard URL"
-  value       = google_cloud_run_v2_service.security_dashboard.uri
-}
-
-# Workload Identity Outputs
-output "workload_identity_provider" {
-  description = "Workload Identity Provider for GitHub Actions"
-  value       = google_iam_workload_identity_pool_provider.github.name
-}
-
-output "github_actions_sa_email" {
-  description = "GitHub Actions Service Account email"
-  value       = google_service_account.github_actions.email
-}
-
-# Service Accounts
-output "trivy_operator_sa_email" {
-  description = "Trivy Operator Service Account"
-  value       = google_service_account.github_actions.email
-}
-
-output "cloud_functions_sa_email" {
-  description = "Cloud Functions Service Account"
-  value       = google_service_account.cloud_functions.email
-}
-
-# Artifact Registry
-output "container_registry" {
-  description = "Artifact Registry repository"
-  value       = "${var.region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.containers.repository_id}"
-}
-
-# Instructions
 output "connect_to_cluster" {
-  description = "Command to connect to GKE cluster"
-  value       = "gcloud container clusters get-credentials ${google_container_cluster.autopilot.name} --region ${var.region} --project ${var.project_id}"
+  value = "gcloud container clusters get-credentials ${module.gke.cluster_name} --region ${var.region} --project ${var.project_id}"
 }
 
 output "github_secrets_to_set" {
-  description = "GitHub secrets configuration"
   value = <<-EOT
     Set these GitHub secrets:
     
-    WIF_PROVIDER: ${google_iam_workload_identity_pool_provider.github.name}
-    GCP_SA_EMAIL: ${google_service_account.github_actions.email}
+    WIF_PROVIDER: ${module.iam.workload_identity_provider}
+    GCP_SA_EMAIL: ${module.iam.github_actions_sa_email}
     PROJECT_ID: ${var.project_id}
   EOT
 }

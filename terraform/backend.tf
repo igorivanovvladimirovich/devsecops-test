@@ -1,6 +1,6 @@
 terraform {
   backend "gcs" {
-    bucket = "YOUR_PROJECT_ID-tfstate"
+    bucket = "devsecops-test-1772362415-tfstate"
     prefix = "terraform/state"
   }
 }
