@@ -1,0 +1,49 @@
+# Terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfvars
+!terraform.tfvars.example
+.terraform.lock.hcl
+
+# Environments
+.env
+.env.local
+*.env
+
+# Secrets
+*.key
+*.json
+*-key.json
+secrets/
+
+# Local
+.DS_Store
+*.swp
+*.swo
+*~
+
+# Functions
+functions/**/*.zip
+functions/**/node_modules/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+*.egg-info/
+
+# Outputs
+outputs.json
+terraform-outputs.json
+
+# Logs
+*.log
+/logs/
+
+# Kind
+kubeconfig-*

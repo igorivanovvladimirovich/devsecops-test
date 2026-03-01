@@ -1,0 +1,91 @@
+# Falco (Open-source IDS/IPS)
+falco:
+  grpc:
+    enabled: true
+  grpcOutput:
+    enabled: true
+
+  jsonOutput: true
+  jsonIncludeOutputProperty: true
+  
+  httpOutput:
+    enabled: true
+    url: "http://falco-exporter:8080/events"
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  # Custom rules для APT detection
+  customRules:
+    apt-detection.yaml: |-
+      - rule: Magic File Created in Tmp
+        desc: Detect creation of magic file (APT indicator)
+        condition: >
+          evt.type in (open,openat,openat2) and
+          evt.is_open_write=true and
+          fd.name="/tmp/.magic_file"
+        output: >
+          APT ALERT: Magic file created in /tmp
+          (user=%user.name process=%proc.name file=%fd.name container=%container.name)
+        priority: CRITICAL
+        tags: [apt, russian_apt, file_system]
+      
+      - rule: Connection to Suspicious Port 31337
+        desc: Detect C&C connection on port 31337
+        condition: >
+          evt.type=connect and
+          fd.sip!="127.0.0.1" and
+          fd.sport=31337
+        output: >
+          APT ALERT: Connection to C&C port 31337
+          (user=%user.name process=%proc.name dest=%fd.sip container=%container.name)
+        priority: CRITICAL
+        tags: [apt, russian_apt, network]
+      
+      - rule: Crypto Mining Activity
+        desc: Detect crypto mining processes
+        condition: >
+          spawned_process and
+          proc.name in (xmrig, minerd, cpuminer, ethminer, miner)
+        output: >
+          APT ALERT: Crypto mining process detected
+          (user=%user.name process=%proc.name cmdline=%proc.cmdline container=%container.name)
+        priority: CRITICAL
+        tags: [apt, russian_apt, crypto_mining]
+      
+      - rule: High CPU Usage Container
+        desc: Container using excessive CPU (possible crypto mining)
+        condition: >
+          evt.type=execve and
+          proc.pcpu > 80
+        output: >
+          APT WARNING: High CPU usage detected
+          (container=%container.name cpu=%proc.pcpu process=%proc.name)
+        priority: WARNING
+        tags: [apt, performance]
+
+driver:
+  kind: ebpf
+  ebpf:
+    hostNetwork: true
+
+tty: true
+
+ebpf:
+  enabled: true
+
+falcosidekick:
+  enabled: true
+  webui:
+    enabled: true
+  
+  config:
+    pubsub:
+      projectid: "YOUR_PROJECT_ID"
+      topic: "apt-detection"
+      minimumpriority: "warning"

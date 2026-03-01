@@ -1,0 +1,30 @@
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: vuln-cluster
+nodes:
+- role: control-plane
+  image: kindest/node:v1.27.3
+  kubeadmConfigPatches:
+  - |
+    kind: ClusterConfiguration
+    apiServer:
+      extraArgs:
+        # Enable audit logging
+        audit-log-path: /var/log/kubernetes/audit.log
+        audit-policy-file: /etc/kubernetes/audit-policy.yaml
+        # Insecure settings for demo
+        enable-admission-plugins: NodeRestriction
+        # Missing: PodSecurityPolicy, etc.
+  extraMounts:
+  - hostPath: ./audit-policy.yaml
+    containerPath: /etc/kubernetes/audit-policy.yaml
+  - hostPath: /var/log/kubernetes
+    containerPath: /var/log/kubernetes
+  extraPortMappings:
+  - containerPort: 30080
+    hostPort: 8080
+    protocol: TCP
+- role: worker
+  image: kindest/node:v1.27.3
+- role: worker
+  image: kindest/node:v1.27.3

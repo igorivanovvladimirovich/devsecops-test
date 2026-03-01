@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: old-nginx
+  namespace: vulnerable-apps
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: old-nginx
+  template:
+    metadata:
+      labels:
+        app: old-nginx
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:1.14.0  # Old version with known CVEs
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 100m
+            memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: old-nginx
+  namespace: vulnerable-apps
+spec:
+  selector:
+    app: old-nginx
+  ports:
+  - port: 80
+    targetPort: 80

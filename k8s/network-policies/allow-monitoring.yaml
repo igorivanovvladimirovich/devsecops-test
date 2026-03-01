@@ -1,0 +1,36 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-monitoring
+  namespace: security-monitoring
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: falco
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow from anywhere (Falco needs to be accessible)
+  - {}
+  egress:
+  # Allow to API server
+  - to:
+    - namespaceSelector: {}
+    ports:
+    - protocol: TCP
+      port: 443
+  # Allow to Pub/Sub
+  - to:
+    - namespaceSelector: {}
+    ports:
+    - protocol: TCP
+      port: 443
+  # Allow DNS
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53

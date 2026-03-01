@@ -1,0 +1,13 @@
+.git
+.gitignore
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.terraform/
+*.tfstate
+*.tfvars
+.env
+node_modules/
+*.md
+docs/

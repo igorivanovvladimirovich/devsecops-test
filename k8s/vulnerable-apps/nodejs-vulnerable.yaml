@@ -1,0 +1,81 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vulnerable-app-code
+  namespace: vulnerable-apps
+data:
+  server.js: |
+    const express = require('express');
+    const app = express();
+    
+    // SQL Injection vulnerability
+    app.get('/user', (req, res) => {
+      const query = "SELECT * FROM users WHERE id = " + req.query.id;  // VULNERABLE!
+      res.send(query);
+    });
+    
+    // Command Injection vulnerability
+    app.get('/ping', (req, res) => {
+      const exec = require('child_process').exec;
+      exec('ping -c 1 ' + req.query.host, (err, stdout) => {  // VULNERABLE!
+        res.send(stdout);
+      });
+    });
+    
+    // XSS vulnerability
+    app.get('/hello', (req, res) => {
+      res.send('<h1>Hello ' + req.query.name + '</h1>');  // VULNERABLE!
+    });
+    
+    app.listen(3000, () => console.log('Vulnerable app on 3000'));
+  
+  package.json: |
+    {
+      "name": "vulnerable-app",
+      "version": "1.0.0",
+      "dependencies": {
+        "express": "4.16.0",
+        "lodash": "4.17.15"
+      }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nodejs-vulnerable
+  namespace: vulnerable-apps
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nodejs-vulnerable
+  template:
+    metadata:
+      labels:
+        app: nodejs-vulnerable
+    spec:
+      containers:
+      - name: nodejs
+        image: node:10  # Old Node.js version
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          cd /app
+          npm install
+          node server.js
+        volumeMounts:
+        - name: app-code
+          mountPath: /app
+        ports:
+        - containerPort: 3000
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi
+      volumes:
+      - name: app-code
+        configMap:
+          name: vulnerable-app-code

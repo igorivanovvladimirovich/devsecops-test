@@ -1,0 +1,29 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: deny-egress-port-31337
+  namespace: apt-simulation
+spec:
+  podSelector: {}
+  policyTypes:
+  - Egress
+  egress:
+  # Allow DNS
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+  # Allow all except port 31337
+  - to:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 1
+      endPort: 31336
+    - protocol: TCP
+      port: 31338
+      endPort: 65535
+  # Deny everything else (including 31337)

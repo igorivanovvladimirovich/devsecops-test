@@ -1,0 +1,48 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: fake-crypto-miner
+  namespace: apt-simulation
+  labels:
+    app: crypto-miner
+    threat-level: high
+spec:
+  containers:
+  - name: miner
+    image: busybox:latest
+    command:
+    - /bin/sh
+    - -c
+    - |
+      #!/bin/sh
+      echo "=== APT Simulation: Crypto Miner ==="
+      
+      # Indicator 1: Create magic file
+      echo "Creating magic file..."
+      touch /tmp/.magic_file
+      echo "timestamp: $(date)" > /tmp/.magic_file
+      echo "host: $(hostname)" >> /tmp/.magic_file
+      
+      # Indicator 2: Rename process to look like miner
+      echo "Starting fake mining process..."
+      
+      # Simulate CPU-intensive mining
+      while true; do
+        # Run CPU-intensive operations
+        dd if=/dev/zero of=/dev/null bs=1M count=100 2>/dev/null
+        
+        # Simulate periodic C&C checkin
+        if command -v nc >/dev/null 2>&1; then
+          echo "Attempting C&C connection to port 31337..."
+          nc -w 1 -z 8.8.8.8 31337 2>&1 || true
+        fi
+        
+        sleep 30
+      done
+    resources:
+      requests:
+        cpu: 100m
+        memory: 64Mi
+      limits:
+        cpu: 500m
+        memory: 128Mi

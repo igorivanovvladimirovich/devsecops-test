@@ -1,0 +1,48 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: magic-file-creator
+  namespace: apt-simulation
+  labels:
+    app: magic-file
+    threat-level: medium
+spec:
+  containers:
+  - name: creator
+    image: ubuntu:latest
+    command:
+    - /bin/bash
+    - -c
+    - |
+      #!/bin/bash
+      echo "=== APT Simulation: Magic File Creation ==="
+      
+      # Create the magic file
+      touch /tmp/.magic_file
+      
+      # Write APT indicators to file
+      cat > /tmp/.magic_file <<EOF
+      # Russian APT Magic File
+      timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)
+      hostname: $(hostname)
+      target: $(cat /etc/hostname 2>/dev/null || echo "unknown")
+      operator: apt29_simulation
+      campaign: test_exercise
+      EOF
+      
+      echo "Magic file created:"
+      ls -la /tmp/.magic_file
+      cat /tmp/.magic_file
+      
+      # Keep pod alive for detection
+      echo "Keeping pod alive for 5 minutes..."
+      sleep 300
+      
+      echo "Simulation complete"
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 100m
+        memory: 128Mi

@@ -1,0 +1,34 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress-old
+  namespace: vulnerable-apps
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress-old
+  template:
+    metadata:
+      labels:
+        app: wordpress-old
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:5.0  # Very old version
+        ports:
+        - containerPort: 80
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: "localhost"
+        - name: WORDPRESS_DB_USER
+          value: "admin"
+        - name: WORDPRESS_DB_PASSWORD
+          value: "password123"  # Hardcoded password (vulnerability)
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi

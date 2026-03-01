@@ -1,0 +1,28 @@
+apiVersion: audit.k8s.io/v1
+kind: Policy
+rules:
+# Log exec commands (container escape attempts)
+- level: RequestResponse
+  verbs: ["create"]
+  resources:
+  - group: ""
+    resources: ["pods/exec", "pods/attach"]
+
+# Log secrets access
+- level: Metadata
+  resources:
+  - group: ""
+    resources: ["secrets"]
+
+# Log privileged pod creation
+- level: RequestResponse
+  verbs: ["create", "update"]
+  resources:
+  - group: ""
+    resources: ["pods"]
+  omitStages:
+  - "RequestReceived"
+
+# Don't log read-only requests
+- level: None
+  verbs: ["get", "list", "watch"]

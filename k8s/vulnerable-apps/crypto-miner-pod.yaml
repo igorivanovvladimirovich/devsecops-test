@@ -1,0 +1,49 @@
+# Симуляция APT: Crypto Miner
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: apt-simulation
+  labels:
+    security: demo
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: fake-crypto-miner
+  namespace: apt-simulation
+  labels:
+    app: crypto-miner
+    threat: apt-simulation
+spec:
+  containers:
+  - name: miner
+    image: busybox:latest
+    command:
+    - /bin/sh
+    - -c
+    - |
+      #!/bin/sh
+      echo "Starting fake crypto miner..."
+      
+      # Create magic file (APT indicator #1)
+      touch /tmp/.magic_file
+      echo "Magic file created at $(date)" > /tmp/.magic_file
+      
+      # Simulate CPU-intensive process (APT indicator #3)
+      while true; do
+        # Rename process to look like miner
+        exec -a "xmrig-miner" sh -c "
+          # Fake mining loop
+          for i in \$(seq 1 1000000); do
+            echo \$i > /dev/null
+          done
+          sleep 1
+        "
+      done
+    resources:
+      requests:
+        cpu: 100m
+        memory: 64Mi
+      limits:
+        cpu: 500m
+        memory: 128Mi

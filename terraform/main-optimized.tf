@@ -1,0 +1,915 @@
+terraform {
+  required_version = ">= 1.0"
+  required_providers {
+    google = {
+      source  = "hashicorp/google"
+      version = "~> 5.0"
+    }
+    google-beta = {
+      source  = "hashicorp/google-beta"
+      version = "~> 5.0"
+    }
+  }
+  backend "gcs" {
+    # Will be configured via backend.tf
+  }
+}
+
+provider "google" {
+  project = var.project_id
+  region  = var.region
+}
+
+provider "google-beta" {
+  project = var.project_id
+  region  = var.region
+}
+
+# ============================================
+# 1. NETWORKING (VPC + Cloud Armor)
+# ============================================
+
+resource "google_compute_network" "vpc" {
+  name                    = "devsecops-vpc"
+  auto_create_subnetworks = false
+  project                 = var.project_id
+}
+
+resource "google_compute_subnetwork" "gke_subnet" {
+  name          = "gke-subnet"
+  ip_cidr_range = "10.0.0.0/24"
+  region        = var.region
+  network       = google_compute_network.vpc.id
+
+  secondary_ip_range {
+    range_name    = "pods"
+    ip_cidr_range = "10.1.0.0/16"
+  }
+
+  secondary_ip_range {
+    range_name    = "services"
+    ip_cidr_range = "10.2.0.0/20"
+  }
+
+  # VPC Flow Logs для мониторинга (бесплатно первые 50GB)
+  log_config {
+    aggregation_interval = "INTERVAL_5_SEC"
+    flow_sampling        = 0.5
+    metadata             = "INCLUDE_ALL_METADATA"
+  }
+}
+
+# Cloud Armor Security Policy (бесплатно)
+resource "google_compute_security_policy" "apt_protection" {
+  name        = "apt-protection-policy"
+  description = "Protection against Russian APT (suspicious ports)"
+
+  # Блокировка подозрительных портов (31337 из условия)
+  rule {
+    action   = "deny(403)"
+    priority = "1000"
+    match {
+      expr {
+        expression = "origin.port == 31337"
+      }
+    }
+    description = "Block C&C port 31337"
+  }
+
+  # Блокировка по географии (опционально)
+  rule {
+    action   = "deny(403)"
+    priority = "2000"
+    match {
+      expr {
+        expression = "origin.region_code == 'RU'"
+      }
+    }
+    description = "Block traffic from Russia"
+  }
+
+  # Rate limiting
+  rule {
+    action   = "rate_based_ban"
+    priority = "3000"
+    match {
+      versioned_expr = "SRC_IPS_V1"
+      config {
+        src_ip_ranges = ["*"]
+      }
+    }
+    rate_limit_options {
+      conform_action = "allow"
+      exceed_action  = "deny(429)"
+      rate_limit_threshold {
+        count        = 100
+        interval_sec = 60
+      }
+      ban_duration_sec = 600
+    }
+    description = "Rate limit: 100 req/min"
+  }
+
+  # Default rule
+  rule {
+    action   = "allow"
+    priority = "2147483647"
+    match {
+      versioned_expr = "SRC_IPS_V1"
+      config {
+        src_ip_ranges = ["*"]
+      }
+    }
+    description = "Default allow"
+  }
+}
+
+# ============================================
+# 2. GKE AUTOPILOT (Оптимизировано по цене)
+# ============================================
+
+resource "google_container_cluster" "autopilot" {
+  name     = var.cluster_name
+  location = var.region
+  
+  # Autopilot - pay only for pods!
+  enable_autopilot = true
+
+  # Network config
+  network    = google_compute_network.vpc.id
+  subnetwork = google_compute_subnetwork.gke_subnet.id
+
+  ip_allocation_policy {
+    cluster_secondary_range_name  = "pods"
+    services_secondary_range_name = "services"
+  }
+
+  # Workload Identity
+  workload_identity_config {
+    workload_pool = "${var.project_id}.svc.id.goog"
+  }
+
+  # Binary Authorization для безопасности
+  binary_authorization {
+    evaluation_mode = "PROJECT_SINGLETON_POLICY_ENFORCE"
+  }
+
+  # Logging (оптимизировано)
+  logging_config {
+    enable_components = [
+      "SYSTEM_COMPONENTS",
+      "WORKLOADS"
+    ]
+  }
+
+  # Monitoring (минимальный)
+  monitoring_config {
+    enable_components = [
+      "SYSTEM_COMPONENTS"
+    ]
+    managed_prometheus {
+      enabled = true
+    }
+  }
+
+  # Security features
+  enable_shielded_nodes = true
+  
+  # Release channel для автоапдейтов
+  release_channel {
+    channel = "REGULAR"
+  }
+
+  # Maintenance window (ночью для экономии)
+  maintenance_policy {
+    daily_maintenance_window {
+      start_time = "03:00"
+    }
+  }
+}
+
+# ============================================
+# 3. ARTIFACT REGISTRY (для контейнеров)
+# ============================================
+
+resource "google_artifact_registry_repository" "containers" {
+  location      = var.region
+  repository_id = "devsecops-containers"
+  description   = "Container images for DevSecOps"
+  format        = "DOCKER"
+
+  # Cleanup policy для экономии
+  cleanup_policies {
+    id     = "delete-old"
+    action = "DELETE"
+    condition {
+      older_than = "259200s" # 3 дня
+    }
+  }
+
+  cleanup_policies {
+    id     = "keep-minimum"
+    action = "KEEP"
+    most_recent_versions {
+      keep_count = 5
+    }
+  }
+}
+
+# ============================================
+# 4. PUB/SUB (Event Bus)
+# ============================================
+
+# Topic для Trivy отчетов
+resource "google_pubsub_topic" "trivy_reports" {
+  name = "trivy-reports"
+
+  message_retention_duration = "259200s" # 3 дня
+}
+
+# Topic для security alerts
+resource "google_pubsub_topic" "security_alerts" {
+  name = "security-alerts"
+
+  message_retention_duration = "259200s"
+}
+
+# Topic для APT detection
+resource "google_pubsub_topic" "apt_detection" {
+  name = "apt-detection"
+
+  message_retention_duration = "259200s"
+}
+
+# Subscriptions
+resource "google_pubsub_subscription" "trivy_reports_sub" {
+  name  = "trivy-reports-processor"
+  topic = google_pubsub_topic.trivy_reports.name
+
+  ack_deadline_seconds = 20
+
+  expiration_policy {
+    ttl = "259200s" # 3 дня
+  }
+
+  retry_policy {
+    minimum_backoff = "10s"
+  }
+}
+
+resource "google_pubsub_subscription" "apt_detection_sub" {
+  name  = "apt-detection-processor"
+  topic = google_pubsub_topic.apt_detection.name
+
+  ack_deadline_seconds = 20
+
+  expiration_policy {
+    ttl = "259200s"
+  }
+}
+
+# ============================================
+# 5. BIGQUERY (Data Warehouse)
+# ============================================
+
+resource "google_bigquery_dataset" "security" {
+  dataset_id    = "security_data"
+  friendly_name = "Security Data Warehouse"
+  location      = var.region
+  
+  # Автоудаление таблиц через 3 дня
+  default_table_expiration_ms = 259200000
+
+  labels = {
+    environment = "devsecops"
+    cost_center = "security"
+  }
+}
+
+# Таблица для сырых логов
+resource "google_bigquery_table" "raw_logs" {
+  dataset_id = google_bigquery_dataset.security.dataset_id
+  table_id   = "raw_logs"
+  
+  deletion_protection = false
+
+  time_partitioning {
+    type          = "DAY"
+    expiration_ms = 259200000 # 3 дня
+  }
+
+  clustering = ["severity", "namespace"]
+
+  schema = jsonencode([
+    {
+      name = "timestamp"
+      type = "TIMESTAMP"
+      mode = "REQUIRED"
+    },
+    {
+      name = "source"
+      type = "STRING"
+      mode = "NULLABLE"
+    },
+    {
+      name = "namespace"
+      type = "STRING"
+      mode = "NULLABLE"
+    },
+    {
+      name = "pod_name"
+      type = "STRING"
+      mode = "NULLABLE"
+    },
+    {
+      name = "severity"
+      type = "STRING"
+      mode = "NULLABLE"
+    },
+    {
+      name = "log_data"
+      type = "JSON"
+      mode = "NULLABLE"
+    }
+  ])
+}
+
+# Таблица для уязвимостей
+resource "google_bigquery_table" "vulnerabilities" {
+  dataset_id = google_bigquery_dataset.security.dataset_id
+  table_id   = "vulnerabilities"
+  
+  deletion_protection = false
+
+  time_partitioning {
+    type          = "DAY"
+    expiration_ms = 259200000
+  }
+
+  clustering = ["severity", "resource_namespace"]
+
+  schema = jsonencode([
+    {
+      name = "scan_time"
+      type = "TIMESTAMP"
+      mode = "REQUIRED"
+    },
+    {
+      name = "resource_namespace"
+      type = "STRING"
+      mode = "NULLABLE"
+    },
+    {
+      name = "resource_name"
+      type = "STRING"
+      mode = "NULLABLE"
+    },
+    {
+      name = "resource_kind"
+      type = "STRING"
+      mode = "NULLABLE"
+    },
+    {
+      name = "vulnerability_id"
+      type = "STRING"
+      mode = "NULLABLE"
+    },
+    {
+      name = "severity"
+      type = "STRING"
+      mode = "NULLABLE"
+    },
+    {
+      name = "title"
+      type = "STRING"
+      mode = "NULLABLE"
+    },
+    {
+      name = "package_name"
+      type = "STRING"
+      mode = "NULLABLE"
+    },
+    {
+      name = "installed_version"
+      type = "STRING"
+      mode = "NULLABLE"
+    },
+    {
+      name = "fixed_version"
+      type = "STRING"
+      mode = "NULLABLE"
+    },
+    {
+      name = "cvss_score"
+      type = "FLOAT"
+      mode = "NULLABLE"
+    }
+  ])
+}
+
+# Таблица для APT индикаторов
+resource "google_bigquery_table" "apt_indicators" {
+  dataset_id = google_bigquery_dataset.security.dataset_id
+  table_id   = "apt_indicators"
+  
+  deletion_protection = false
+
+  time_partitioning {
+    type          = "DAY"
+    expiration_ms = 259200000
+  }
+
+  schema = jsonencode([
+    {
+      name = "detection_time"
+      type = "TIMESTAMP"
+      mode = "REQUIRED"
+    },
+    {
+      name = "indicator_type"
+      type = "STRING"
+      mode = "NULLABLE"
+      description = "magic_file, suspicious_port, crypto_miner"
+    },
+    {
+      name = "resource_name"
+      type = "STRING"
+      mode = "NULLABLE"
+    },
+    {
+      name = "namespace"
+      type = "STRING"
+      mode = "NULLABLE"
+    },
+    {
+      name = "details"
+      type = "JSON"
+      mode = "NULLABLE"
+    },
+    {
+      name = "risk_score"
+      type = "INTEGER"
+      mode = "NULLABLE"
+    }
+  ])
+}
+
+# ============================================
+# 6. CLOUD STORAGE (Multi-purpose)
+# ============================================
+
+# Terraform state bucket
+resource "google_storage_bucket" "terraform_state" {
+  name          = "${var.project_id}-tfstate"
+  location      = var.region
+  force_destroy = true
+  
+  uniform_bucket_level_access = true
+  
+  versioning {
+    enabled = true
+  }
+
+  lifecycle_rule {
+    condition {
+      num_newer_versions = 3
+    }
+    action {
+      type = "Delete"
+    }
+  }
+}
+
+# Scan results bucket
+resource "google_storage_bucket" "scan_results" {
+  name          = "${var.project_id}-scan-results"
+  location      = var.region
+  force_destroy = true
+
+  uniform_bucket_level_access = true
+
+  lifecycle_rule {
+    condition {
+      age = 3 # дней
+    }
+    action {
+      type = "Delete"
+    }
+  }
+}
+
+# Demo target bucket (для exploit)
+resource "google_storage_bucket" "demo_target" {
+  name          = "${var.project_id}-demo-target"
+  location      = var.region
+  force_destroy = true
+
+  uniform_bucket_level_access = true
+
+  lifecycle_rule {
+    condition {
+      age = 3
+    }
+    action {
+      type = "Delete"
+    }
+  }
+
+  labels = {
+    purpose = "exploit-demo"
+  }
+}
+
+# ============================================
+# 7. CLOUD FUNCTIONS (Event Processing)
+# ============================================
+
+# Service Account для Cloud Functions
+resource "google_service_account" "cloud_functions" {
+  account_id   = "cloud-functions-sa"
+  display_name = "Cloud Functions Service Account"
+}
+
+# Права для BigQuery
+resource "google_project_iam_member" "cf_bigquery" {
+  project = var.project_id
+  role    = "roles/bigquery.dataEditor"
+  member  = "serviceAccount:${google_service_account.cloud_functions.email}"
+}
+
+# Права для Pub/Sub
+resource "google_project_iam_member" "cf_pubsub" {
+  project = var.project_id
+  role    = "roles/pubsub.publisher"
+  member  = "serviceAccount:${google_service_account.cloud_functions.email}"
+}
+
+# Cloud Function для обработки Trivy reports
+resource "google_cloudfunctions2_function" "process_trivy_reports" {
+  name        = "process-trivy-reports"
+  location    = var.region
+  description = "Process Trivy vulnerability reports"
+
+  build_config {
+    runtime     = "python311"
+    entry_point = "process_report"
+    
+    source {
+      storage_source {
+        bucket = google_storage_bucket.scan_results.name
+        object = google_storage_bucket_object.function_source.name
+      }
+    }
+  }
+
+  service_config {
+    max_instance_count    = 3
+    min_instance_count    = 0
+    available_memory      = "256M"
+    timeout_seconds       = 60
+    service_account_email = google_service_account.cloud_functions.email
+
+    environment_variables = {
+      PROJECT_ID = var.project_id
+      DATASET_ID = google_bigquery_dataset.security.dataset_id
+    }
+  }
+
+  event_trigger {
+    trigger_region = var.region
+    event_type     = "google.cloud.pubsub.topic.v1.messagePublished"
+    pubsub_topic   = google_pubsub_topic.trivy_reports.id
+    retry_policy   = "RETRY_POLICY_RETRY"
+  }
+}
+
+# Source code placeholder (будет создан отдельно)
+resource "google_storage_bucket_object" "function_source" {
+  name   = "functions/process-trivy-${timestamp()}.zip"
+  bucket = google_storage_bucket.scan_results.name
+  source = "${path.module}/../functions/process-trivy.zip"
+}
+
+# Cloud Function для детекции APT
+resource "google_cloudfunctions2_function" "detect_apt" {
+  name        = "detect-apt-indicators"
+  location    = var.region
+  description = "Detect Russian APT indicators (magic file, port 31337, crypto mining)"
+
+  build_config {
+    runtime     = "python311"
+    entry_point = "detect_apt"
+    
+    source {
+      storage_source {
+        bucket = google_storage_bucket.scan_results.name
+        object = google_storage_bucket_object.apt_detector_source.name
+      }
+    }
+  }
+
+  service_config {
+    max_instance_count    = 3
+    min_instance_count    = 0
+    available_memory      = "256M"
+    timeout_seconds       = 60
+    service_account_email = google_service_account.cloud_functions.email
+
+    environment_variables = {
+      PROJECT_ID      = var.project_id
+      DATASET_ID      = google_bigquery_dataset.security.dataset_id
+      ALERT_TOPIC     = google_pubsub_topic.security_alerts.name
+      MAGIC_FILE_PATH = "/tmp/.magic_file"
+      CC_PORT         = "31337"
+    }
+  }
+
+  event_trigger {
+    trigger_region = var.region
+    event_type     = "google.cloud.pubsub.topic.v1.messagePublished"
+    pubsub_topic   = google_pubsub_topic.apt_detection.id
+    retry_policy   = "RETRY_POLICY_RETRY"
+  }
+}
+
+resource "google_storage_bucket_object" "apt_detector_source" {
+  name   = "functions/detect-apt-${timestamp()}.zip"
+  bucket = google_storage_bucket.scan_results.name
+  source = "${path.module}/../functions/detect-apt.zip"
+}
+
+# ============================================
+# 8. CLOUD RUN (Security Dashboard API)
+# ============================================
+
+resource "google_service_account" "cloud_run" {
+  account_id   = "cloud-run-dashboard"
+  display_name = "Cloud Run Dashboard Service Account"
+}
+
+resource "google_project_iam_member" "cr_bigquery" {
+  project = var.project_id
+  role    = "roles/bigquery.dataViewer"
+  member  = "serviceAccount:${google_service_account.cloud_run.email}"
+}
+
+resource "google_cloud_run_v2_service" "security_dashboard" {
+  name     = "security-dashboard"
+  location = var.region
+
+  template {
+    service_account = google_service_account.cloud_run.email
+
+    scaling {
+      min_instance_count = 0
+      max_instance_count = 2
+    }
+
+    containers {
+      image = "${var.region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.containers.repository_id}/security-dashboard:latest"
+
+      resources {
+        limits = {
+          cpu    = "1"
+          memory = "512Mi"
+        }
+        cpu_idle = true
+      }
+
+      env {
+        name  = "PROJECT_ID"
+        value = var.project_id
+      }
+
+      env {
+        name  = "DATASET_ID"
+        value = google_bigquery_dataset.security.dataset_id
+      }
+
+      ports {
+        container_port = 8080
+      }
+    }
+  }
+
+  traffic {
+    type    = "TRAFFIC_TARGET_ALLOCATION_TYPE_LATEST"
+    percent = 100
+  }
+}
+
+# Public access (для демо)
+resource "google_cloud_run_v2_service_iam_member" "dashboard_public" {
+  name     = google_cloud_run_v2_service.security_dashboard.name
+  location = google_cloud_run_v2_service.security_dashboard.location
+  role     = "roles/run.invoker"
+  member   = "allUsers"
+}
+
+# ============================================
+# 9. SECRET MANAGER
+# ============================================
+
+# Secret для GitHub token (если нужен)
+resource "google_secret_manager_secret" "github_token" {
+  secret_id = "github-token"
+
+  replication {
+    user_managed {
+      replicas {
+        location = var.region
+      }
+    }
+  }
+}
+
+# Secret для Webhook URL (для exploit demo)
+resource "google_secret_manager_secret" "webhook_url" {
+  secret_id = "exploit-webhook-url"
+
+  replication {
+    user_managed {
+      replicas {
+        location = var.region
+      }
+    }
+  }
+}
+
+# ============================================
+# 10. WORKLOAD IDENTITY (GitHub Actions)
+# ============================================
+
+resource "google_service_account" "github_actions" {
+  account_id   = "github-actions"
+  display_name = "GitHub Actions Service Account"
+}
+
+# УЯЗВИМОСТЬ: широкие права для демонстрации exploit
+resource "google_project_iam_member" "github_editor" {
+  project = var.project_id
+  role    = "roles/editor"
+  member  = "serviceAccount:${google_service_account.github_actions.email}"
+}
+
+resource "google_iam_workload_identity_pool" "github" {
+  workload_identity_pool_id = "github-pool"
+  display_name              = "GitHub Actions Pool"
+  description               = "Identity pool for GitHub Actions"
+}
+
+resource "google_iam_workload_identity_pool_provider" "github" {
+  workload_identity_pool_id          = google_iam_workload_identity_pool.github.workload_identity_pool_id
+  workload_identity_pool_provider_id = "github-provider"
+  display_name                       = "GitHub Provider"
+  
+  attribute_mapping = {
+    "google.subject"       = "assertion.sub"
+    "attribute.actor"      = "assertion.actor"
+    "attribute.repository" = "assertion.repository"
+  }
+
+  oidc {
+    issuer_uri = "https://token.actions.githubusercontent.com"
+  }
+}
+
+resource "google_service_account_iam_member" "github_workload_identity" {
+  service_account_id = google_service_account.github_actions.name
+  role               = "roles/iam.workloadIdentityUser"
+  member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.repository/${var.github_owner}/${var.github_repo}"
+}
+
+# ============================================
+# 11. LOGGING & MONITORING
+# ============================================
+
+# Log sink для GKE логов в BigQuery
+resource "google_logging_project_sink" "gke_to_bigquery" {
+  name        = "gke-logs-to-bq"
+  destination = "bigquery.googleapis.com/projects/${var.project_id}/datasets/${google_bigquery_dataset.security.dataset_id}"
+
+  filter = <<-EOT
+    resource.type="k8s_pod"
+    OR resource.type="k8s_cluster"
+  EOT
+
+  unique_writer_identity = true
+  
+  bigquery_options {
+    use_partitioned_tables = true
+  }
+}
+
+resource "google_bigquery_dataset_iam_member" "sink_writer" {
+  dataset_id = google_bigquery_dataset.security.dataset_id
+  role       = "roles/bigquery.dataEditor"
+  member     = google_logging_project_sink.gke_to_bigquery.writer_identity
+}
+
+# Monitoring Alert для APT индикаторов
+resource "google_monitoring_alert_policy" "apt_detected" {
+  display_name = "APT Indicator Detected"
+  combiner     = "OR"
+  
+  conditions {
+    display_name = "APT detection in logs"
+    
+    condition_matched_log {
+      filter = <<-EOT
+        resource.type="k8s_pod"
+        AND (
+          jsonPayload.file_path="/tmp/.magic_file"
+          OR jsonPayload.connection_port=31337
+          OR jsonPayload.process_name=~"miner|xmrig"
+        )
+      EOT
+    }
+  }
+
+  notification_channels = [google_monitoring_notification_channel.email.id]
+
+  alert_strategy {
+    auto_close = "86400s" # 24 hours
+  }
+}
+
+resource "google_monitoring_notification_channel" "email" {
+  display_name = "Security Team Email"
+  type         = "email"
+  
+  labels = {
+    email_address = var.alert_email
+  }
+}
+
+# Dashboard для визуализации
+resource "google_monitoring_dashboard" "security" {
+  dashboard_json = jsonencode({
+    displayName = "DevSecOps Security Dashboard"
+    mosaicLayout = {
+      columns = 12
+      tiles = [
+        {
+          width  = 6
+          height = 4
+          widget = {
+            title = "Vulnerabilities by Severity"
+            xyChart = {
+              dataSets = [{
+                timeSeriesQuery = {
+                  timeSeriesFilter = {
+                    filter = "resource.type=\"k8s_pod\""
+                  }
+                }
+              }]
+            }
+          }
+        }
+      ]
+    }
+  })
+}
+
+# ============================================
+# 12. BINARY AUTHORIZATION
+# ============================================
+
+resource "google_binary_authorization_policy" "policy" {
+  admission_whitelist_patterns {
+    name_pattern = "gcr.io/google_containers/*"
+  }
+
+  admission_whitelist_patterns {
+    name_pattern = "${var.region}-docker.pkg.dev/${var.project_id}/*"
+  }
+
+  default_admission_rule {
+    evaluation_mode  = "REQUIRE_ATTESTATION"
+    enforcement_mode = "ENFORCED_BLOCK_AND_AUDIT_LOG"
+    
+    require_attestations_by = [
+      google_binary_authorization_attestor.built_by_cloud_build.name
+    ]
+  }
+
+  global_policy_evaluation_mode = "ENABLE"
+}
+
+resource "google_binary_authorization_attestor" "built_by_cloud_build" {
+  name = "built-by-cloud-build"
+  
+  attestation_authority_note {
+    note_reference = google_container_analysis_note.build_note.name
+  }
+}
+
+resource "google_container_analysis_note" "build_note" {
+  name = "build-attestation-note"
+  
+  attestation_authority {
+    hint {
+      human_readable_name = "Built by Cloud Build"
+    }
+  }
+}
