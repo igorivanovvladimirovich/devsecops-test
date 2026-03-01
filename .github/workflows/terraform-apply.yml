@@ -40,4 +40,4 @@ jobs:
         working-directory: ./terraform
         env:
           TF_LOG: INFO
-        run: terraform apply -auto-approve
+        run: terraform apply -auto-approve -lock-timeout=5m

@@ -38,5 +38,5 @@ jobs:
       - uses: hashicorp/setup-terraform@v3
       - run: terraform init
         working-directory: terraform
-      - run: terraform apply -auto-approve
+      - run: terraform apply -auto-approve -lock-timeout=5m
         working-directory: terraform
