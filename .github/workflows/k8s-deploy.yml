@@ -41,6 +41,15 @@ jobs:
             --timeout 3m \
             --wait=false
 
+      - name: Deploy namespaces
+        run: |
+          kubectl apply -f k8s/namespaces/
+          kubectl wait --for=jsonpath='{.status.phase}'=Active \
+            namespace/apt-simulation \
+            namespace/vulnerable-apps \
+            namespace/security-monitoring \
+            --timeout=30s
+
       - name: Deploy vulnerable apps
         run: kubectl apply -f k8s/vulnerable-apps/
 
