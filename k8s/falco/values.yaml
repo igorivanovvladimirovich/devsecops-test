@@ -70,9 +70,9 @@ falco:
         tags: [apt, performance]
 
 driver:
-  kind: ebpf
-  ebpf:
-    hostNetwork: true
+  kind: none
+collectors:
+  enabled: false
 
 tty: true
 
@@ -86,6 +86,6 @@ falcosidekick:
   
   config:
     pubsub:
-      projectid: "YOUR_PROJECT_ID"
+      projectid: "devsecops-test-1772362415"
       topic: "apt-detection"
       minimumpriority: "warning"

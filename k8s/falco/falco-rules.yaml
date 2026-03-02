@@ -1,0 +1,72 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: falco-custom-rules
+  namespace: security-monitoring
+data:
+  apt_rules.yaml: |-
+    - rule: Magic File Created in Tmp
+      desc: Detect creation of APT magic file in /tmp
+      condition: >
+        evt.type in (open,openat,openat2) and
+        evt.is_open_write=true and
+        fd.name="/tmp/.magic_file"
+      output: >
+        APT ALERT: Magic file created (user=%user.name process=%proc.name
+        file=%fd.name container=%container.name namespace=%k8s.ns.name
+        pod=%k8s.pod.name)
+      priority: CRITICAL
+      tags: [apt, russian_apt, filesystem]
+
+    - rule: Connection to CC Port 31337
+      desc: Detect backconnect to C&C center on port 31337
+      condition: >
+        evt.type=connect and
+        fd.sip!="127.0.0.1" and
+        fd.dport=31337
+      output: >
+        APT ALERT: C&C backconnect on port 31337 (user=%user.name
+        process=%proc.name dest=%fd.sip:%fd.dport
+        container=%container.name namespace=%k8s.ns.name)
+      priority: CRITICAL
+      tags: [apt, russian_apt, network]
+
+    - rule: Crypto Mining Process Detected
+      desc: Detect known crypto mining process names
+      condition: >
+        spawned_process and
+        proc.name in (xmrig, xmrig-miner, minerd, cpuminer, ethminer)
+      output: >
+        APT ALERT: Crypto miner process spawned (user=%user.name
+        process=%proc.name cmdline=%proc.cmdline
+        container=%container.name namespace=%k8s.ns.name)
+      priority: CRITICAL
+      tags: [apt, russian_apt, crypto_mining]
+
+    - rule: Suspicious File in Tmp Directory
+      desc: Detect hidden files (dot files) created in /tmp
+      condition: >
+        evt.type in (open,openat,openat2) and
+        evt.is_open_write=true and
+        fd.name startswith "/tmp/." and
+        not proc.name in (systemd, sshd)
+      output: >
+        WARNING: Hidden file created in /tmp (user=%user.name
+        process=%proc.name file=%fd.name
+        container=%container.name namespace=%k8s.ns.name)
+      priority: WARNING
+      tags: [apt, filesystem]
+
+    - rule: Outbound Connection from Container
+      desc: Detect unexpected outbound connections from monitored namespaces
+      condition: >
+        evt.type=connect and
+        k8s.ns.name in (apt-simulation, vulnerable-apps) and
+        fd.sip!="127.0.0.1" and
+        fd.dport!=53
+      output: >
+        WARNING: Outbound connection from monitored namespace
+        (process=%proc.name dest=%fd.sip:%fd.dport
+        container=%container.name namespace=%k8s.ns.name)
+      priority: WARNING
+      tags: [apt, network]

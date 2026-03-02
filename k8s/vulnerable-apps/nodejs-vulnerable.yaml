@@ -61,20 +61,17 @@ spec:
         - sh
         - -c
         - |
-          mkdir -p /tmp/app
-          cd /tmp/app
+          mkdir -p /tmp/app && cd /tmp/app
           cat > server.js << 'EOF'
           const http = require('http');
           const { exec } = require('child_process');
-          // Vulnerable: command injection
-          const server = http.createServer((req, res) => {
-            const url = new URL(req.url, 'http://localhost');
-            const cmd = url.searchParams.get('cmd') || 'echo hello';
-            exec(cmd, (err, stdout) => {
-              res.end(stdout || err?.message);
+          const server = http.createServer(function(req, res) {
+            const cmd = req.url.replace('/?cmd=', '') || 'echo hello';
+            exec(cmd, function(err, stdout) {
+              res.end(stdout || (err && err.message) || 'no output');  // ← no ?. operator
             });
           });
-          server.listen(3000, () => console.log('Vulnerable app running on 3000'));
+          server.listen(3000, function() { console.log('Vulnerable app on 3000'); });
           EOF
           node server.js
         ports:
