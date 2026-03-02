@@ -26,6 +26,6 @@ trivyOperator:
   vulnerabilityReportsPlugin: "Trivy"
   compressLogs: true
 
+# Let Helm create SA with Workload Identity
 serviceAccount:
-  create: false  # We create it in Terraform
-  name: trivy-operator
+  create: true

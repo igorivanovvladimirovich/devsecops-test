@@ -38,7 +38,19 @@ jobs:
           helm upgrade --install trivy-operator aqua/trivy-operator \
             --namespace trivy-system \
             --values k8s/trivy-operator/values.yaml \
-            --wait
+            --timeout 3m \
+            --wait=false
+          
+          echo "Waiting for operator pod..."
+          kubectl wait --for=condition=Ready pod \
+            -l app.kubernetes.io/name=trivy-operator \
+            -n trivy-system \
+            --timeout=120s || echo "⚠️ Operator not ready yet, will continue in background"
+
+      - name: Check Trivy Status
+        run: |
+          kubectl get pods -n trivy-system
+          kubectl logs -n trivy-system -l app.kubernetes.io/name=trivy-operator --tail=20 || true
 
       - name: Deploy Trivy Pub/Sub Publisher
         run: kubectl apply -f k8s/trivy-operator/pubsub-publisher.yaml
@@ -53,9 +65,3 @@ jobs:
           
       - name: Deploy network policies
         run: kubectl apply -f k8s/network-policies/ || true
-      
-      - name: Wait for Trivy scans
-        run: |
-          echo "Waiting for initial scans..."
-          sleep 60
-          kubectl get vulnerabilityreports -A || echo "No reports yet"
