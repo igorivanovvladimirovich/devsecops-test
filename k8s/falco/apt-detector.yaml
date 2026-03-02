@@ -1,0 +1,121 @@
+# k8s/falco/apt-detector.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: apt-detector
+  namespace: security-monitoring
+  labels:
+    app: apt-detector
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: apt-detector
+  template:
+    metadata:
+      labels:
+        app: apt-detector
+    spec:
+      serviceAccountName: apt-detector
+      containers:
+      - name: detector
+        image: google/cloud-sdk:slim
+        env:
+        - name: PROJECT_ID
+          value: "devsecops-test-1772362415"
+        - name: PUBSUB_TOPIC
+          value: "apt-detection"
+        - name: CHECK_INTERVAL
+          value: "30"
+        command:
+        - /bin/bash
+        - -c
+        - |
+          echo "APT Detector starting..."
+
+          publish_alert() {
+            local indicator_type=$1
+            local details=$2
+            local risk_score=$3
+            
+            MESSAGE=$(cat <<EOF
+          {
+            "detection_time": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "indicator_type": "${indicator_type}",
+            "details": "${details}",
+            "risk_score": ${risk_score},
+            "source": "apt-detector"
+          }
+          EOF
+            )
+            echo "$MESSAGE" | gcloud pubsub topics publish ${PUBSUB_TOPIC} \
+              --project=${PROJECT_ID} \
+              --message="$MESSAGE" 2>&1 || true
+            echo "[$(date)] ALERT published: ${indicator_type}"
+          }
+
+          while true; do
+            echo "[$(date)] Running APT detection sweep..."
+
+            # Check for magic file in running pods via kubectl logs
+            for NS in apt-simulation vulnerable-apps; do
+              PODS=$(kubectl get pods -n $NS -o name 2>/dev/null || true)
+              for POD in $PODS; do
+                POD_NAME=$(echo $POD | cut -d/ -f2)
+                
+                # Check logs for magic file creation
+                LOGS=$(kubectl logs -n $NS $POD_NAME --tail=50 2>/dev/null || true)
+                
+                if echo "$LOGS" | grep -q "magic_file\|\.magic_file\|Magic file"; then
+                  publish_alert \
+                    "magic_file_detected" \
+                    "Magic file activity in pod ${POD_NAME} ns=${NS}" \
+                    90
+                fi
+
+                if echo "$LOGS" | grep -q "31337\|C&C\|xmrig\|miner"; then
+                  publish_alert \
+                    "cc_connection_or_miner" \
+                    "C&C or miner activity in pod ${POD_NAME} ns=${NS}" \
+                    95
+                fi
+              done
+            done
+
+            sleep ${CHECK_INTERVAL}
+          done
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: apt-detector
+  namespace: security-monitoring
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: apt-detector
+rules:
+- apiGroups: [""]
+  resources: ["pods", "pods/log", "namespaces"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: apt-detector
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: apt-detector
+subjects:
+- kind: ServiceAccount
+  name: apt-detector
+  namespace: security-monitoring

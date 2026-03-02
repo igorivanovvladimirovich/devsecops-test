@@ -50,15 +50,8 @@ jobs:
             --timeout 3m \
             --wait=false
 
-      - name: Install Falco
-        run: |
-          helm repo add falcosecurity https://falcosecurity.github.io/charts
-          helm repo update
-          helm upgrade --install falco falcosecurity/falco \
-            --namespace security-monitoring \
-            --values k8s/falco/values.yaml \
-            --timeout 5m \
-            --wait=false
+      - name: Deploy APT Detector
+        run: kubectl apply -f k8s/falco/apt-detector.yaml
 
       # ── 3. Falco extras — needs Falco namespace to exist ─────────
       - name: Apply Falco custom rules
@@ -92,6 +85,10 @@ jobs:
 
           echo "=== Falco ==="
           kubectl get pods -n security-monitoring
+
+          echo "=== APT Detector Logs ==="
+          kubectl logs -n security-monitoring \
+            -l app=apt-detector --tail=20 2>/dev/null || true
 
           echo "=== Vulnerable Apps ==="
           kubectl get pods -n vulnerable-apps
