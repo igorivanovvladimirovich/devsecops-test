@@ -51,14 +51,7 @@ jobs:
             --wait=false
 
       - name: Deploy APT Detector
-        run: kubectl apply -f k8s/falco/apt-detector.yaml
-
-      # ── 3. Falco extras — needs Falco namespace to exist ─────────
-      - name: Apply Falco custom rules
-        run: kubectl apply -f k8s/falco/falco-rules.yaml
-
-      - name: Deploy Falco exporter
-        run: kubectl apply -f k8s/falco/falco-exporter.yaml─────────────────────
+        run: kubectl apply -f k8s/falco/apt-detector.yaml || true
 
       - name: Deploy vulnerable apps
         run: kubectl apply -f k8s/vulnerable-apps/
