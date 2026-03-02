@@ -39,4 +39,8 @@ jobs:
       
       - name: Terraform Plan
         working-directory: terraform
-        run: terraform plan -no-color
+        env:
+          TF_VAR_project_id: ${{ secrets.PROJECT_ID }}
+          TF_VAR_github_owner: ${{ github.repository_owner }}
+          TF_VAR_github_repo: ${{ github.event.repository.name }}
+        run: terraform plan -input=false -no-color --lock=false
