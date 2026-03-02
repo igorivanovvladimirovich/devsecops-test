@@ -44,15 +44,16 @@ jobs:
           TF_VAR_github_repo: ${{ github.event.repository.name }}
         run: terraform plan -input=false -no-color --lock=false
 
-      # - name: Terraform Apply
-      #   working-directory: ./terraform
-      #   env:
-      #     TF_LOG: INFO
-      #     TF_LOG_PATH: terraform.log    # ← write logs to file
-      #   run: |
-      #     terraform apply -auto-approve \
-      #       --lock=false \
-      #       -refresh=false              # ← skip refresh if infra hasn't changed
+      - name: Terraform Apply
+        working-directory: ./terraform
+        env:
+          TF_VAR_project_id: ${{ secrets.PROJECT_ID }}
+          TF_VAR_github_owner: ${{ github.repository_owner }}
+          TF_VAR_github_repo: ${{ github.event.repository.name }}
+        run: |
+          terraform apply -auto-approve \
+            --lock=false \
+            -refresh=false              # ← skip refresh if infra hasn't changed
 
       - name: Show Terraform logs on failure
         if: failure()
