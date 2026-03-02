@@ -31,13 +31,31 @@ jobs:
       - name: Deploy namespaces
         run: kubectl apply -f k8s/namespaces/
 
+      - name: Install Trivy Operator
+        run: |
+          helm repo add aqua https://aquasecurity.github.io/helm-charts/
+          helm repo update
+          helm upgrade --install trivy-operator aqua/trivy-operator \
+            --namespace trivy-system \
+            --values k8s/trivy-operator/values.yaml \
+            --wait
+
+      - name: Deploy Trivy Pub/Sub Publisher
+        run: kubectl apply -f k8s/trivy-operator/pubsub-publisher.yaml
+
       - name: Deploy vulnerable apps
         run: kubectl apply -f k8s/vulnerable-apps/
 
-      - name: Redeploy APT simulation (delete old pods first)
+      - name: Redeploy APT simulation
         run: |
           kubectl delete pods -n apt-simulation --all --ignore-not-found=true
           kubectl apply -f k8s/apt-simulation/
           
       - name: Deploy network policies
         run: kubectl apply -f k8s/network-policies/ || true
+      
+      - name: Wait for Trivy scans
+        run: |
+          echo "Waiting for initial scans..."
+          sleep 60
+          kubectl get vulnerabilityreports -A || echo "No reports yet"

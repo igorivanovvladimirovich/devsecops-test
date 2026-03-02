@@ -4,7 +4,6 @@ metadata:
   name: trivy-pubsub-config
   namespace: trivy-system
 data:
-  PROJECT_ID: "YOUR_PROJECT_ID"
   TOPIC_NAME: "trivy-reports"
 ---
 apiVersion: apps/v1
@@ -25,34 +24,45 @@ spec:
       serviceAccountName: trivy-operator
       containers:
       - name: publisher
-        image: gcr.io/google.com/cloudsdktool/google-cloud-cli:slim
+        image: google/cloud-sdk:slim
         command:
         - /bin/bash
         - -c
         - |
           #!/bin/bash
+          apt-get update && apt-get install -y kubectl
+          
+          PROJECT_ID=$(gcloud config get-value project)
+          
           while true; do
-            # Get vulnerability reports
+            echo "[$(date)] Collecting vulnerability reports..."
+            
             kubectl get vulnerabilityreports -A -o json > /tmp/reports.json
             
-            # Compress with gzip (Trivy format)
-            gzip -c /tmp/reports.json > /tmp/reports.json.gz
+            if [ -s /tmp/reports.json ]; then
+              gzip -c /tmp/reports.json > /tmp/reports.json.gz
+              
+              gcloud pubsub topics publish ${TOPIC_NAME} \
+                --project=${PROJECT_ID} \
+                --message="$(base64 -w0 /tmp/reports.json.gz)"
+              
+              echo "✅ Published report"
+            else
+              echo "⚠️  No reports yet"
+            fi
             
-            # Publish to Pub/Sub
-            gcloud pubsub topics publish ${TOPIC_NAME} \
-              --project=${PROJECT_ID} \
-              --message="$(base64 /tmp/reports.json.gz)"
-            
-            echo "Published report at $(date)"
-            sleep 300  # Every 5 minutes
+            sleep 300
           done
-        envFrom:
-        - configMapRef:
-            name: trivy-pubsub-config
+        env:
+        - name: TOPIC_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: trivy-pubsub-config
+              key: TOPIC_NAME
         resources:
           requests:
             cpu: 50m
-            memory: 64Mi
+            memory: 128Mi
           limits:
             cpu: 200m
             memory: 256Mi

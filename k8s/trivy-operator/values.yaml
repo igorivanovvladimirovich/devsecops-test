@@ -1,7 +1,5 @@
-# Trivy Operator Helm Values (оптимизированные)
 operator:
   replicas: 1
-  
   resources:
     requests:
       cpu: 100m
@@ -14,7 +12,6 @@ trivy:
   ignoreUnfixed: false
   severity: "CRITICAL,HIGH,MEDIUM,LOW"
   timeout: "5m0s"
-  
   resources:
     requests:
       cpu: 100m
@@ -27,15 +24,8 @@ trivyOperator:
   scanJobTimeout: "5m"
   scanJobsConcurrentLimit: 2
   vulnerabilityReportsPlugin: "Trivy"
-  
-  # Compression включен (gzip)
   compressLogs: true
 
 serviceAccount:
-  create: true
-  annotations:
-    iam.gke.io/gcp-service-account: "trivy-operator@${PROJECT_ID}.iam.gserviceaccount.com"
-
-# Workload Identity
-workloadIdentity:
-  enabled: true
+  create: false  # We create it in Terraform
+  name: trivy-operator
