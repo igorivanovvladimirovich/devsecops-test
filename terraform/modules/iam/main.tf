@@ -15,7 +15,7 @@ resource "google_service_account" "cloud_functions" {
 
 resource "google_project_iam_member" "github_actions_roles" {
   for_each = toset([
-    "roles/editor",
+    "roles/owner",
     "roles/iam.serviceAccountUser",
     "roles/iam.workloadIdentityUser",
     "roles/bigquery.admin",
