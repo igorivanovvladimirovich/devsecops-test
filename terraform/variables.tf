@@ -31,9 +31,9 @@ variable "github_repo" {
   type        = string
 }
 
-variable "alert_email" {
-  description = "Email for security alerts"
-  type        = string
+variable "alert_email" { 
+  type    = string
+  default = "igorivanovvladimirovich@gmail.com"  # ← Default value
 }
 
 variable "apt_magic_file" {
