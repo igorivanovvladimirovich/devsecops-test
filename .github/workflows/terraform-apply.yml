@@ -40,7 +40,7 @@ jobs:
         working-directory: ./terraform
         env:
           TF_LOG: INFO
-        run: terraform plan
+        run: terraform plan --lock=false
 
       # - name: Terraform Apply
       #   working-directory: ./terraform
