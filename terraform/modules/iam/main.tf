@@ -17,7 +17,9 @@ resource "google_project_iam_member" "github_actions_roles" {
   for_each = toset([
     "roles/editor",
     "roles/iam.serviceAccountUser",
-    "roles/iam.workloadIdentityUser"
+    "roles/iam.workloadIdentityUser",
+    "roles/bigquery.admin",
+    "roles/container.admin"
   ])
   project = var.project_id
   role    = each.key

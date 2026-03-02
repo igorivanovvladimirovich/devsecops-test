@@ -54,7 +54,3 @@ jobs:
           terraform apply -auto-approve \
             --lock=false \
             -refresh=false              # ← skip refresh if infra hasn't changed
-
-      - name: Show Terraform logs on failure
-        if: failure()
-        run: tail -100 terraform/terraform.log
