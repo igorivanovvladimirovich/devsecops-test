@@ -4,9 +4,10 @@ on:
   push:
     branches: [main]
     paths:
-          - 'k8s/**'
-          - '.github/workflows/k8s-deploy.yml'
-    workflow_dispatch:
+      - 'k8s/**'
+      - '.github/workflows/k8s-deploy.yml'
+  workflow_dispatch:
+
 permissions:
   id-token: write
   contents: read
@@ -14,10 +15,6 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      contents: read
-
     steps:
       - uses: actions/checkout@v4
 
@@ -28,20 +25,19 @@ jobs:
 
       - uses: google-github-actions/get-gke-credentials@v2
         with:
-          cluster_name: ${{ secrets.CLUSTER_NAME }}
+          cluster_name: devsecops-gke
           location: us-central1
 
       - name: Deploy namespaces
-        run: |
-          kubectl apply -f k8s/namespaces/
-          kubectl wait --for=jsonpath='{.status.phase}'=Active \
-            namespace/apt-simulation \
-            namespace/vulnerable-apps \
-            namespace/security-monitoring \
-            --timeout=30s
+        run: kubectl apply -f k8s/namespaces/
 
       - name: Deploy vulnerable apps
-        run: kubectl apply -f k8s/vulnerable-apps/ --force
+        run: kubectl apply -f k8s/vulnerable-apps/
 
-      - name: Deploy apt simulation
-        run: kubectl apply -f k8s/apt-simulation/ --force
+      - name: Redeploy APT simulation (delete old pods first)
+        run: |
+          kubectl delete pods -n apt-simulation --all --ignore-not-found=true
+          kubectl apply -f k8s/apt-simulation/
+          
+      - name: Deploy network policies
+        run: kubectl apply -f k8s/network-policies/ || true
