@@ -3,6 +3,9 @@ name: Terraform Plan (VULNERABLE)
 on:
   pull_request:  # ⚠️ VULNERABLE
     branches: [ main ]
+    paths:
+     - '.github/workflows/terraforn-plan-vulnerable.yml'
+  workflow_dispatch:
 
 permissions:
   id-token: write
