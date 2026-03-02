@@ -40,28 +40,27 @@ jobs:
             --values k8s/trivy-operator/values.yaml \
             --timeout 3m \
             --wait=false
-          
-          echo "Waiting for operator pod..."
-          kubectl wait --for=condition=Ready pod \
-            -l app.kubernetes.io/name=trivy-operator \
-            -n trivy-system \
-            --timeout=120s || echo "⚠️ Operator not ready yet, will continue in background"
-
-      - name: Check Trivy Status
-        run: |
-          kubectl get pods -n trivy-system
-          kubectl logs -n trivy-system -l app.kubernetes.io/name=trivy-operator --tail=20 || true
-
-      - name: Deploy Trivy Pub/Sub Publisher
-        run: kubectl apply -f k8s/trivy-operator/pubsub-publisher.yaml
 
       - name: Deploy vulnerable apps
         run: kubectl apply -f k8s/vulnerable-apps/
 
-      - name: Redeploy APT simulation
-        run: |
-          kubectl delete pods -n apt-simulation --all --ignore-not-found=true
-          kubectl apply -f k8s/apt-simulation/
+      - name: Deploy APT simulation (Deployments - can be updated!)
+        run: kubectl apply -f k8s/apt-simulation/
           
+      - name: Deploy Trivy Pub/Sub Publisher
+        run: kubectl apply -f k8s/trivy-operator/pubsub-publisher.yaml
+
       - name: Deploy network policies
         run: kubectl apply -f k8s/network-policies/ || true
+      
+      - name: Check deployment status
+        run: |
+          echo "=== Trivy Operator ==="
+          kubectl get pods -n trivy-system
+          
+          echo "=== Vulnerable Apps ==="
+          kubectl get pods -n vulnerable-apps
+          
+          echo "=== APT Simulation ==="
+          kubectl get deployments -n apt-simulation
+          kubectl get pods -n apt-simulation

@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cc-connector
+  namespace: apt-simulation
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cc-connection
+  template:
+    metadata:
+      labels:
+        app: cc-connection
+        threat-level: critical
+    spec:
+      containers:
+      - name: connector
+        image: nicolaka/netshoot:latest
+        command: ["/bin/bash", "-c"]
+        args:
+        - |
+          #!/bin/bash
+          echo "=== APT Simulation: C&C Connection ==="
+          
+          touch /tmp/.magic_file
+          echo "cc_connection_active: true" > /tmp/.magic_file
+          
+          attempt_cc_connection() {
+            local target=$1
+            local port=$2
+            echo "[$(date)] Attempting connection to ${target}:${port}"
+            timeout 2 nc -zv ${target} ${port} 2>&1 || true
+            timeout 2 telnet ${target} ${port} 2>&1 || true
+          }
+          
+          while true; do
+            attempt_cc_connection "8.8.8.8" 31337
+            attempt_cc_connection "1.1.1.1" 31337
+            attempt_cc_connection "example.com" 31337
+            echo "Waiting 60 seconds..."
+            sleep 60
+          done
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 100m
+            memory: 128Mi

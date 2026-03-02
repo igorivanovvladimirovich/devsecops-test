@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: magic-file-creator
+  namespace: apt-simulation
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: magic-file
+  template:
+    metadata:
+      labels:
+        app: magic-file
+        threat-level: medium
+    spec:
+      containers:
+      - name: creator
+        image: ubuntu:latest
+        command: ["/bin/bash", "-c"]
+        args:
+        - |
+          #!/bin/bash
+          echo "=== APT Simulation: Magic File Creation ==="
+          
+          while true; do
+            touch /tmp/.magic_file
+            cat > /tmp/.magic_file <<EOFMARKER
+          timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)
+          hostname: $(hostname)
+          operator: apt29_simulation
+          campaign: test_exercise
+          EOFMARKER
+            
+            echo "Magic file updated:"
+            cat /tmp/.magic_file
+            
+            sleep 300
+          done
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 100m
+            memory: 128Mi
