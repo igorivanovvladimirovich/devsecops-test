@@ -70,9 +70,9 @@ falco:
         tags: [apt, performance]
 
 driver:
-  kind: none
-collectors:
-  enabled: false
+  kind: modern_ebpf
+  ebpf:
+    hostNetwork: true
 
 tty: true
 
