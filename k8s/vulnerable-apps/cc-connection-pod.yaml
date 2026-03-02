@@ -1,42 +1,38 @@
-# Симуляция APT: C&C Connection
-apiVersion: v1
-kind: Pod
+apiVersion: apps/v1
+kind: Deployment
 metadata:
   name: cc-connector
   namespace: apt-simulation
-  labels:
-    app: cc-connection
-    threat: apt-simulation
 spec:
-  containers:
-  - name: connector
-    image: nicolaka/netshoot:latest
-    command:
-    - /bin/bash
-    - -c
-    - |
-      #!/bin/bash
-      echo "Simulating C&C connection..."
-      
-      # Create magic file
-      touch /tmp/.magic_file
-      
-      # Attempt connection to port 31337 (APT indicator #2)
-      while true; do
-        echo "Attempting connection to C&C server on port 31337..."
-        
-        # Try to connect (will fail, but will be logged)
-        nc -zv -w 5 example.com 31337 2>&1 || true
-        
-        # Alternative: use telnet
-        timeout 5 telnet example.com 31337 2>&1 || true
-        
-        sleep 60
-      done
-    resources:
-      requests:
-        cpu: 50m
-        memory: 64Mi
-      limits:
-        cpu: 100m
-        memory: 128Mi
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cc-connection
+  template:
+    metadata:
+      labels:
+        app: cc-connection
+        threat: apt-simulation
+    spec:
+      containers:
+      - name: connector
+        image: nicolaka/netshoot:latest
+        command:
+        - /bin/bash
+        - -c
+        - |
+          touch /tmp/.magic_file
+          echo "cc_connection_active: true" > /tmp/.magic_file
+          while true; do
+            echo "[$(date)] Attempting C&C on port 31337..."
+            timeout 2 nc -zv -w 5 example.com 31337 2>&1 || true
+            timeout 2 bash -c "cat < /dev/tcp/8.8.8.8/31337" 2>&1 || true
+            sleep 60
+          done
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 100m
+            memory: 128Mi
