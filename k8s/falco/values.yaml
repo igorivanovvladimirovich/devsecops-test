@@ -71,8 +71,6 @@ falco:
 
 driver:
   kind: modern_ebpf
-  ebpf:
-    hostNetwork: true
 
 tty: true
 
