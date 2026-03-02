@@ -50,14 +50,47 @@ jobs:
             --timeout 3m \
             --wait=false
 
-      - name: Deploy APT Detector
-        run: kubectl apply -f k8s/falco/apt-detector.yaml || true
+
+      - name: Wait for Trivy Operator ready
+        run: |
+          echo "Waiting for Trivy Operator to be ready..."
+          kubectl wait --for=condition=Ready pods \
+            -l app.kubernetes.io/name=trivy-operator \
+            -n trivy-system \
+            --timeout=120s || true
+          kubectl get pods -n trivy-system
 
       - name: Deploy vulnerable apps
         run: kubectl apply -f k8s/vulnerable-apps/
 
+      - name: Wait for vulnerable apps ready
+        run: |
+          echo "Waiting for vulnerable apps..."
+          kubectl wait --for=condition=Ready pods \
+            --all -n vulnerable-apps \
+            --timeout=120s || true
+          kubectl get pods -n vulnerable-apps
+
       - name: Deploy APT simulation
         run: kubectl apply -f k8s/apt-simulation/
+
+      - name: Wait for APT simulation ready
+        run: |
+          echo "Waiting for APT simulation pods..."
+          kubectl wait --for=condition=Ready pods \
+            --all -n apt-simulation \
+            --timeout=120s || true
+          kubectl get pods -n apt-simulation
+
+      - name: Deploy APT Detector
+        run: kubectl apply -f k8s/falco/apt-detector.yaml
+
+      - name: Wait for APT Detector ready
+        run: |
+          kubectl wait --for=condition=Ready pods \
+            -l app=apt-detector \
+            -n security-monitoring \
+            --timeout=60s || true
 
       # ── 5. Supporting infra — needs workloads to exist ───────────
       - name: Deploy Trivy Pub/Sub Publisher
@@ -67,25 +100,22 @@ jobs:
       - name: Deploy network policies
         run: kubectl apply -f k8s/network-policies/ || true
 
-      # ── 7. Status check ───────────────────────────────────────────
       - name: Check deployment status
         run: |
-          echo "=== Namespaces ==="
-          kubectl get namespaces
-
           echo "=== Trivy Operator ==="
           kubectl get pods -n trivy-system
 
-          echo "=== Falco ==="
+          echo "=== Falco / APT Detector ==="
           kubectl get pods -n security-monitoring
-
-          echo "=== APT Detector Logs ==="
           kubectl logs -n security-monitoring \
-            -l app=apt-detector --tail=20 2>/dev/null || true
+            -l app=apt-detector --tail=5 2>/dev/null || true
 
           echo "=== Vulnerable Apps ==="
           kubectl get pods -n vulnerable-apps
 
           echo "=== APT Simulation ==="
-          kubectl get deployments -n apt-simulation
           kubectl get pods -n apt-simulation
+
+          echo "=== VulnerabilityReports ==="
+          kubectl get vulnerabilityreports -A --no-headers 2>/dev/null \
+            | wc -l | xargs echo "Total reports:"

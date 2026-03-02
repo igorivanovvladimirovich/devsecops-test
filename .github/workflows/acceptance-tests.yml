@@ -138,7 +138,11 @@ jobs:
       - name: ✅ Test 10 - Cloud Functions Deployed
         run: |
           echo "Testing Cloud Functions..."
-          gcloud functions list --gen2 --region us-central1 || echo "Functions not deployed yet"
+          gcloud functions list \
+            --v2 \
+            --regions=us-central1 \
+            --project=$(gcloud config get-value project) \
+            || echo "⚠️ Functions not deployed yet"
 
   test-exploitation:
     runs-on: ubuntu-latest
