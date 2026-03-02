@@ -1,3 +1,4 @@
+# wordpress-old.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -14,17 +15,37 @@ spec:
         app: wordpress-old
     spec:
       containers:
+      - name: mysql
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: "password123"
+        - name: MYSQL_DATABASE
+          value: "wordpress"
+        - name: MYSQL_USER
+          value: "admin"
+        - name: MYSQL_PASSWORD
+          value: "password123"
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 200m
+            memory: 512Mi
       - name: wordpress
-        image: wordpress:5.0  # Very old version
+        image: wordpress:5.0
         ports:
         - containerPort: 80
         env:
         - name: WORDPRESS_DB_HOST
-          value: "localhost"
+          value: "127.0.0.1"        # ← localhost sidecar
         - name: WORDPRESS_DB_USER
           value: "admin"
         - name: WORDPRESS_DB_PASSWORD
-          value: "password123"  # Hardcoded password (vulnerability)
+          value: "password123"      # hardcoded = intentional vulnerability
+        - name: WORDPRESS_DB_NAME
+          value: "wordpress"
         resources:
           requests:
             cpu: 100m
@@ -32,3 +53,15 @@ spec:
           limits:
             cpu: 200m
             memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress-old
+  namespace: vulnerable-apps
+spec:
+  selector:
+    app: wordpress-old
+  ports:
+  - port: 80
+    targetPort: 80

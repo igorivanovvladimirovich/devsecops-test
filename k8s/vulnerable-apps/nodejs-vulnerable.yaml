@@ -56,16 +56,27 @@ spec:
     spec:
       containers:
       - name: nodejs
-        image: node:10  # Old Node.js version
-        command: ["/bin/sh", "-c"]
-        args:
+        image: node:10-alpine   # ← old vulnerable node version
+        command:
+        - sh
+        - -c
         - |
-          cd /app
-          npm install
+          mkdir -p /tmp/app
+          cd /tmp/app
+          cat > server.js << 'EOF'
+          const http = require('http');
+          const { exec } = require('child_process');
+          // Vulnerable: command injection
+          const server = http.createServer((req, res) => {
+            const url = new URL(req.url, 'http://localhost');
+            const cmd = url.searchParams.get('cmd') || 'echo hello';
+            exec(cmd, (err, stdout) => {
+              res.end(stdout || err?.message);
+            });
+          });
+          server.listen(3000, () => console.log('Vulnerable app running on 3000'));
+          EOF
           node server.js
-        volumeMounts:
-        - name: app-code
-          mountPath: /app
         ports:
         - containerPort: 3000
         resources:
@@ -75,7 +86,3 @@ spec:
           limits:
             cpu: 200m
             memory: 256Mi
-      volumes:
-      - name: app-code
-        configMap:
-          name: vulnerable-app-code
