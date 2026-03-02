@@ -36,15 +36,21 @@ jobs:
           TF_LOG: INFO
         run: terraform init
 
-      - name: Terraform Apply
+      - name: Terraform plan
         working-directory: ./terraform
         env:
           TF_LOG: INFO
-          TF_LOG_PATH: terraform.log    # ← write logs to file
-        run: |
-          terraform apply -auto-approve \
-            --lock=false \
-            -refresh=false              # ← skip refresh if infra hasn't changed
+        run: terraform plan
+
+      # - name: Terraform Apply
+      #   working-directory: ./terraform
+      #   env:
+      #     TF_LOG: INFO
+      #     TF_LOG_PATH: terraform.log    # ← write logs to file
+      #   run: |
+      #     terraform apply -auto-approve \
+      #       --lock=false \
+      #       -refresh=false              # ← skip refresh if infra hasn't changed
 
       - name: Show Terraform logs on failure
         if: failure()
