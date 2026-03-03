@@ -34,17 +34,19 @@ spec:
           
           while true; do
             echo "[$(date)] Collecting vulnerability reports..."
-            kubectl get vulnerabilityreports -A -o json > /tmp/reports.json
             
-            REPORT_COUNT=$(kubectl get vulnerabilityreports -A --no-headers | wc -l)
+            kubectl get vulnerabilityreports -A -o json > /tmp/reports.json
+            REPORT_COUNT=$(kubectl get vulnerabilityreports -A --no-headers 2>/dev/null | wc -l)
             echo "Found $REPORT_COUNT reports"
             
-            if [ -s /tmp/reports.json ] && [ "$REPORT_COUNT" -gt 0 ]; then
+            if [ "$REPORT_COUNT" -gt 0 ]; then
               gzip -c /tmp/reports.json > /tmp/reports.json.gz
+              base64 -w0 /tmp/reports.json.gz > /tmp/message.txt
               
+              # ← используй --message-file вместо --message
               gcloud pubsub topics publish ${TOPIC_NAME} \
                 --project=${PROJECT_ID} \
-                --message="$(base64 -w0 /tmp/reports.json.gz)"
+                --message-file=/tmp/message.txt
               
               echo "✅ Published $REPORT_COUNT reports to ${TOPIC_NAME}"
             else

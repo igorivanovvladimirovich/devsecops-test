@@ -60,20 +60,23 @@ spec:
             # Check for magic file in running pods via kubectl logs
             for NS in apt-simulation vulnerable-apps; do
               PODS=$(kubectl get pods -n $NS -o name 2>/dev/null || true)
+              echo "  Checking namespace $NS: $(echo $PODS | wc -w) pods"
               for POD in $PODS; do
                 POD_NAME=$(echo $POD | cut -d/ -f2)
                 
                 # Check logs for magic file creation
                 LOGS=$(kubectl logs -n $NS $POD_NAME --tail=50 2>/dev/null || true)
-                
-                if echo "$LOGS" | grep -q "magic_file\|\.magic_file\|Magic file"; then
+                echo "  Pod $POD_NAME: $(echo "$LOGS" | wc -l) log lines"
+                if echo "$LOGS" | grep -qiE "magic_file|\.magic_file|Magic file|/tmp/\.|touch /tmp"; then
+                  echo "  🚨 Magic file detected in $POD_NAME!"
                   publish_alert \
                     "magic_file_detected" \
                     "Magic file activity in pod ${POD_NAME} ns=${NS}" \
                     90
                 fi
 
-                if echo "$LOGS" | grep -q "31337\|C&C\|xmrig\|miner"; then
+                if echo "$LOGS" | grep -qiE "31337|C&C|xmrig|miner|Attempting|crypto|mining"; then
+                  echo "  🚨 C&C/miner detected in $POD_NAME!"
                   publish_alert \
                     "cc_connection_or_miner" \
                     "C&C or miner activity in pod ${POD_NAME} ns=${NS}" \
