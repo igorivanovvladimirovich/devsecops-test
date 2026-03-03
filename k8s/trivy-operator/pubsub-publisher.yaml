@@ -32,23 +32,23 @@ spec:
           #!/bin/bash
           apt-get update && apt-get install -y kubectl
           
-          PROJECT_ID=$(gcloud config get-value project)
-          
           while true; do
             echo "[$(date)] Collecting vulnerability reports..."
-            
             kubectl get vulnerabilityreports -A -o json > /tmp/reports.json
             
-            if [ -s /tmp/reports.json ]; then
+            REPORT_COUNT=$(kubectl get vulnerabilityreports -A --no-headers | wc -l)
+            echo "Found $REPORT_COUNT reports"
+            
+            if [ -s /tmp/reports.json ] && [ "$REPORT_COUNT" -gt 0 ]; then
               gzip -c /tmp/reports.json > /tmp/reports.json.gz
               
               gcloud pubsub topics publish ${TOPIC_NAME} \
                 --project=${PROJECT_ID} \
                 --message="$(base64 -w0 /tmp/reports.json.gz)"
               
-              echo "✅ Published report"
+              echo "✅ Published $REPORT_COUNT reports to ${TOPIC_NAME}"
             else
-              echo "⚠️  No reports yet"
+              echo "⚠️ No reports yet"
             fi
             
             sleep 300
@@ -59,6 +59,8 @@ spec:
             configMapKeyRef:
               name: trivy-pubsub-config
               key: TOPIC_NAME
+        - name: PROJECT_ID
+          value: "devsecops-test-1772362415"
         resources:
           requests:
             cpu: 50m

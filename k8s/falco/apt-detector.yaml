@@ -119,3 +119,10 @@ subjects:
 - kind: ServiceAccount
   name: apt-detector
   namespace: security-monitoring
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: apt-detector
+  namespace: security-monitoring
+  annotations:
+    iam.gke.io/gcp-service-account: cloud-functions-sa@devsecops-test-1772362415.iam.gserviceaccount.com

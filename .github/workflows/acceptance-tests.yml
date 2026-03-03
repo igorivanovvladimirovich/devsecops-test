@@ -175,11 +175,35 @@ jobs:
           workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
           service_account: ${{ secrets.GCP_SA_EMAIL }}
       
-      - name: ✅ Test 13 - Cost Under $2/day
-        run: |
-          echo "Checking project cost..."
-          # This is informational only
-          gcloud billing projects describe $(gcloud config get-value project) || true
+      - name: ✅ Test 13 - Cost Estimation
+          run: |
+            echo "=== Billing Status ==="
+            gcloud billing projects describe $(gcloud config get-value project)
+
+            echo ""
+            echo "=== Running Resources (cost indicators) ==="
+
+            echo "--- GKE Nodes ---"
+            kubectl get nodes -o custom-columns=\
+            "NAME:.metadata.name,TYPE:.metadata.labels.beta\.kubernetes\.io/instance-type,STATUS:.status.conditions[-1].type" \
+              2>/dev/null || true
+
+            echo "--- Running Pods (total) ---"
+            kubectl get pods -A --no-headers 2>/dev/null | wc -l | xargs echo "Total pods:"
+
+            echo "--- Cloud Functions ---"
+            gcloud functions list --v2 --regions=us-central1 \
+              --format="table(name,state,updateTime)" 2>/dev/null || true
+
+            echo "--- Storage Buckets ---"
+            gcloud storage buckets list --format="table(name,location)" 2>/dev/null || true
+
+            echo "--- BigQuery Storage ---"
+            bq ls --format=pretty security_data 2>/dev/null || true
+
+            echo ""
+            echo "ℹ️ For exact costs see:"
+            echo "https://console.cloud.google.com/billing/01BE24-00EF11-BDADB6/reports"
 
   generate-report:
     runs-on: ubuntu-latest
