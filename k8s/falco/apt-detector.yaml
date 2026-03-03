@@ -33,54 +33,67 @@ spec:
         - |
           echo "APT Detector starting..."
 
+          APISERVER=https://kubernetes.default.svc
+          SERVICEACCOUNT=/var/run/secrets/kubernetes.io/serviceaccount
+          TOKEN=$(cat ${SERVICEACCOUNT}/token)
+          CACERT=${SERVICEACCOUNT}/ca.crt
+
+          echo "Testing API connection..."
+          curl -s --cacert ${CACERT} \
+            --header "Authorization: Bearer ${TOKEN}" \
+            ${APISERVER}/api/v1/namespaces | grep -q "kind" \
+            && echo "✅ API connection OK" \
+            || echo "❌ API connection FAILED"
+
           publish_alert() {
             local indicator_type=$1
             local details=$2
             local risk_score=$3
-            
-            MESSAGE=$(cat <<EOF
-          {
-            "detection_time": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-            "indicator_type": "${indicator_type}",
-            "details": "${details}",
-            "risk_score": ${risk_score},
-            "source": "apt-detector"
-          }
-          EOF
-            )
-            echo "$MESSAGE" | gcloud pubsub topics publish ${PUBSUB_TOPIC} \
+            MESSAGE="{\"detection_time\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"indicator_type\":\"${indicator_type}\",\"details\":\"${details}\",\"risk_score\":${risk_score},\"source\":\"apt-detector\"}"
+            echo "$MESSAGE" > /tmp/alert.json
+            gcloud pubsub topics publish ${PUBSUB_TOPIC} \
               --project=${PROJECT_ID} \
-              --message="$MESSAGE" 2>&1 || true
+              --message-file=/tmp/alert.json 2>&1 || true
             echo "[$(date)] ALERT published: ${indicator_type}"
           }
 
           while true; do
             echo "[$(date)] Running APT detection sweep..."
 
-            # Check for magic file in running pods via kubectl logs
             for NS in apt-simulation vulnerable-apps; do
-              PODS=$(kubectl get pods -n $NS -o name 2>/dev/null || true)
-              echo "  Checking namespace $NS: $(echo $PODS | wc -w) pods"
-              for POD in $PODS; do
-                POD_NAME=$(echo $POD | cut -d/ -f2)
-                
-                # Check logs for magic file creation
-                LOGS=$(kubectl logs -n $NS $POD_NAME --tail=50 2>/dev/null || true)
+              PODS=$(curl -s --cacert ${CACERT} \
+                --header "Authorization: Bearer ${TOKEN}" \
+                ${APISERVER}/api/v1/namespaces/${NS}/pods \
+                | python3 -c "
+          import sys, json
+          data = json.load(sys.stdin)
+          pods = [item['metadata']['name'] for item in data.get('items', [])]
+          print('\n'.join(pods))
+          " 2>/dev/null)
+
+              POD_COUNT=$(echo "$PODS" | grep -c . || echo 0)
+              echo "  Namespace $NS: $POD_COUNT pods"
+
+              for POD_NAME in $PODS; do
+                [ -z "$POD_NAME" ] && continue
+
+                LOGS=$(curl -s --cacert ${CACERT} \
+                  --header "Authorization: Bearer ${TOKEN}" \
+                  "${APISERVER}/api/v1/namespaces/${NS}/pods/${POD_NAME}/log?tailLines=50" \
+                  2>/dev/null || true)
+
                 echo "  Pod $POD_NAME: $(echo "$LOGS" | wc -l) log lines"
-                if echo "$LOGS" | grep -qiE "magic_file|\.magic_file|Magic file|/tmp/\.|touch /tmp"; then
+
+                if echo "$LOGS" | grep -qiE "magic_file|\.magic_file|Magic file|touch /tmp"; then
                   echo "  🚨 Magic file detected in $POD_NAME!"
-                  publish_alert \
-                    "magic_file_detected" \
-                    "Magic file activity in pod ${POD_NAME} ns=${NS}" \
-                    90
+                  publish_alert "magic_file_detected" \
+                    "Magic file in pod ${POD_NAME} ns=${NS}" 90
                 fi
 
-                if echo "$LOGS" | grep -qiE "31337|C&C|xmrig|miner|Attempting|crypto|mining"; then
+                if echo "$LOGS" | grep -qiE "31337|xmrig|miner|Attempting|C&C|crypto"; then
                   echo "  🚨 C&C/miner detected in $POD_NAME!"
-                  publish_alert \
-                    "cc_connection_or_miner" \
-                    "C&C or miner activity in pod ${POD_NAME} ns=${NS}" \
-                    95
+                  publish_alert "cc_connection_or_miner" \
+                    "C&C or miner in pod ${POD_NAME} ns=${NS}" 95
                 fi
               done
             done
