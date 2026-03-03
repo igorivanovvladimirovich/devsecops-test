@@ -40,4 +40,4 @@ jobs:
           TF_VAR_project_id: ${{ secrets.PROJECT_ID }}
           TF_VAR_github_owner: ${{ github.repository_owner }}
           TF_VAR_github_repo: ${{ github.event.repository.name }}
-        run: terraform destroy -auto-approve -input=false
+        run: terraform destroy -auto-approve -input=false -lock=false
