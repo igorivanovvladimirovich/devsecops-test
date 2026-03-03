@@ -1,3 +1,4 @@
+import functions_framework
 import base64
 import json
 import gzip
@@ -7,7 +8,7 @@ import os
 
 PROJECT_ID = os.getenv('PROJECT_ID')
 DATASET_ID = os.getenv('DATASET_ID')
-
+@functions_framework.cloud_event
 def process_report(cloud_event):
     """
     Process Trivy vulnerability report from Pub/Sub.

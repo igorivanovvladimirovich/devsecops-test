@@ -1,3 +1,4 @@
+import functions_framework
 import base64
 import json
 import os
@@ -7,7 +8,7 @@ from google.cloud import bigquery, pubsub_v1
 PROJECT_ID = os.getenv('PROJECT_ID')
 DATASET_ID = os.getenv('DATASET_ID')
 ALERT_TOPIC = os.getenv('ALERT_TOPIC')
-
+@functions_framework.cloud_event
 def detect_apt(cloud_event):
     pubsub_message = base64.b64decode(cloud_event.data["message"]["data"])
     log_data = json.loads(pubsub_message)
