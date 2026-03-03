@@ -41,12 +41,11 @@ spec:
             
             if [ "$REPORT_COUNT" -gt 0 ]; then
               gzip -c /tmp/reports.json > /tmp/reports.json.gz
-              base64 -w0 /tmp/reports.json.gz > /tmp/message.txt
+              ENCODED=$(base64 -w0 /tmp/reports.json.gz)
               
-              # ← используй --message-file вместо --message
               gcloud pubsub topics publish ${TOPIC_NAME} \
                 --project=${PROJECT_ID} \
-                --message-file=/tmp/message.txt
+                --message="${ENCODED}"
               
               echo "✅ Published $REPORT_COUNT reports to ${TOPIC_NAME}"
             else

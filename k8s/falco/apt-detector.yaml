@@ -53,7 +53,7 @@ spec:
             echo "$MESSAGE" > /tmp/alert.json
             gcloud pubsub topics publish ${PUBSUB_TOPIC} \
               --project=${PROJECT_ID} \
-              --message-file=/tmp/alert.json 2>&1 || true
+              --message="${MESSAGE}" 2>&1 || true
             echo "[$(date)] ALERT published: ${indicator_type}"
           }
 
